@@ -1,4 +1,4 @@
-# Rekindle
+# <img src="media/agent.png" width="52" height="52" align="absmiddle" alt=""> Rekindle
 
 **Para usuarios de Codex CLI en Herdr de escritorio para Windows.**
 
@@ -10,9 +10,11 @@ Recupera los chats de Codex que dejaste abiertos en Herdr al volver a iniciar la
 
 ## Vista previa
 
-![El panel de Rekindle en Herdr al cambiar entre inglés y español](preview.gif)
+![Recorrido por los talleres, agentes, subagentes y Rekindle en Herdr](preview.gif)
 
-[Captura estática](preview.png)
+La demo recorre proyectos de ejemplo en Taller y muestra los chats de Codex guardados en Rekindle.
+
+[Vídeo en MP4](media/demo.mp4?raw=true) · [Captura estática](preview.png)
 
 ## Instalación
 

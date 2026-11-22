@@ -1,4 +1,4 @@
-# Rekindle
+# <img src="media/agent.png" width="52" height="52" align="absmiddle" alt=""> Rekindle
 
 **For Codex CLI users running Herdr Desktop on Windows.**
 
@@ -10,9 +10,11 @@ Reopen the Codex chats you left in Herdr when you start the desktop app after a 
 
 ## Preview
 
-![Rekindle's panel in Herdr switching between English and Spanish](preview.gif)
+![A tour of workshops, agents, subagents, and Rekindle in Herdr](preview.gif)
 
-[Static screenshot](preview.png)
+The demo follows sample projects in Herdr's Taller layout and shows the saved Codex chats in Rekindle.
+
+[MP4 video](media/demo.mp4?raw=true) · [Static screenshot](preview.png)
 
 ## Requirements
 
