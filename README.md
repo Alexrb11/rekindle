@@ -1,4 +1,4 @@
-# Herdr Codex Resume
+# Rekindle
 
 **For Codex CLI users running Herdr Desktop on Windows.**
 
@@ -55,5 +55,9 @@ powershell.exe -NoProfile -File .\tests\Resume.Tests.ps1
 ```
 
 The installer test uses temporary profiles and hook configurations. The restore test uses the installed [herdr-core CLI](https://herdr.dev/core/) with a separate state directory and a simulated Codex executable. It stops and starts that instance and checks that two panes each resume their exact ID. It can run without a Codex login.
+
+## Credits
+
+Created by **Alex Rubio**. [alexrubio.dev](https://alexrubio.dev/)
 
 Licensed under [MIT](LICENSE).

@@ -8,7 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if ($env:OS -ne 'Windows_NT') { throw 'Herdr Codex Resume requires Windows.' }
+if ($env:OS -ne 'Windows_NT') { throw 'Rekindle requires Windows.' }
 if (!$CodexDirectory) {
     $CodexDirectory = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE '.codex' }
 }
@@ -191,7 +191,7 @@ foreach ($profileFile in $profileFiles) { Add-ProfileEdit $profileFile }
 if ($Uninstall -and $ownsRuntime) { Add-FileEdit $runtime $null }
 
 if ($edits.Count) {
-    $action = if ($Uninstall) { 'Remove Herdr Codex Resume' } else { 'Install Herdr Codex Resume' }
+    $action = if ($Uninstall) { 'Remove Rekindle' } else { 'Install Rekindle' }
     if (!$PSCmdlet.ShouldProcess(($edits.Path -join ', '), $action)) { return }
     $committed = [Collections.Generic.List[object]]::new()
     try {
@@ -213,7 +213,7 @@ if ($edits.Count) {
     }
 }
 if ($Uninstall) {
-    Write-Output 'Herdr Codex Resume has been removed.'
+    Write-Output 'Rekindle has been removed.'
 } else {
-    Write-Output 'Herdr Codex Resume is installed. In a new Codex CLI session, open /hooks and trust the SessionStart hook that runs herdr-codex-session.ps1.'
+    Write-Output 'Rekindle is installed. In a new Codex CLI session, open /hooks and trust the SessionStart hook that runs herdr-codex-session.ps1.'
 }

@@ -1,4 +1,4 @@
-# Herdr Codex Resume
+# Rekindle
 
 **Para usuarios de Codex CLI en Herdr de escritorio para Windows.**
 
@@ -31,3 +31,7 @@ La restauración vuelve a abrir el chat y queda a la espera de que escribas. Si 
 ```
 
 El desinstalador quita sus entradas del perfil y de los hooks. El historial permanece en Codex. La [guía en inglés](README.md) describe los perfiles personalizados, las versiones comprobadas y las pruebas.
+
+## Créditos
+
+Creado por **Alex Rubio**. [alexrubio.dev](https://alexrubio.dev/)
