@@ -4,15 +4,15 @@
 
 [Leer en español](README.es.md)
 
-Reopen the Codex chats you left in Herdr when you start the desktop app after a Windows reboot. Each pane remembers its own conversation ID and resumes it in place.
+Open-source mod for Herdr Desktop on Windows. Rekindle restores Codex CLI chats in their original panes after a Windows restart. The demo shows how to choose project skills, follow agents and subagents through their animated sprites, and delegate tasks in Taller.
 
 [Download the latest release](https://github.com/Alexrb11/rekindle/releases/latest)
 
 ## Preview
 
-![A tour of workshops, agents, subagents, and Rekindle in Herdr](preview.gif)
+![Selecting a project skill, delegating a task, and watching the subagent finish in Taller](preview.gif)
 
-The demo follows sample projects in Herdr's Taller layout and shows the saved Codex chats in Rekindle.
+Recorded in Herdr with sample projects and a demo engine.
 
 [MP4 video](media/demo.mp4?raw=true) · [Static screenshot](preview.png)
 
