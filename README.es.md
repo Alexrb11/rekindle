@@ -6,6 +6,10 @@
 
 Recupera los chats de Codex que dejaste abiertos en Herdr al volver a iniciar la aplicación después de reiniciar Windows. Cada panel recuerda su propio ID y abre la conversación en el mismo sitio.
 
+[Descargar la última versión](https://github.com/Alexrb11/rekindle/releases/latest)
+
+![Selector de idioma y contador de chats guardados de Rekindle en Herdr](preview.png)
+
 ## Instalación
 
 Necesitas Herdr de escritorio con herdr-core, Codex CLI y una terminal de Herdr que cargue un perfil de PowerShell. [Herdr para Windows](https://herdr.dev/download/), [Codex CLI](https://developers.openai.com/codex/cli/)

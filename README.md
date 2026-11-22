@@ -6,6 +6,10 @@
 
 Reopen the Codex chats you left in Herdr when you start the desktop app after a Windows reboot. Each pane remembers its own conversation ID and resumes it in place.
 
+[Download the latest release](https://github.com/Alexrb11/rekindle/releases/latest)
+
+![Rekindle's language selector and saved chat count in Herdr](preview.png)
+
 ## Requirements
 
 - Windows with Herdr Desktop, its local herdr-core, and Codex CLI.
