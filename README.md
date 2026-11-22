@@ -1,5 +1,7 @@
 # Herdr Codex Resume
 
+**For Codex CLI users running Herdr Desktop on Windows.**
+
 [Leer en español](README.es.md)
 
 Reopen the Codex chats you left in Herdr when you start the desktop app after a Windows reboot. Each pane remembers its own conversation ID and resumes it in place.

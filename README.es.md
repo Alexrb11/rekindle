@@ -1,5 +1,7 @@
 # Herdr Codex Resume
 
+**Para usuarios de Codex CLI en Herdr de escritorio para Windows.**
+
 [Read in English](README.md)
 
 Recupera los chats de Codex que dejaste abiertos en Herdr al volver a iniciar la aplicación después de reiniciar Windows. Cada panel recuerda su propio ID y abre la conversación en el mismo sitio.
