@@ -1,0 +1,22 @@
+name: Installer checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        shell: [powershell, pwsh]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Test installation and removal
+        shell: ${{ matrix.shell }}
+        run: .\tests\Install.Tests.ps1
