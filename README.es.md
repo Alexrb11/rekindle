@@ -8,7 +8,11 @@ Recupera los chats de Codex que dejaste abiertos en Herdr al volver a iniciar la
 
 [Descargar la última versión](https://github.com/Alexrb11/rekindle/releases/latest)
 
-![Selector de idioma y contador de chats guardados de Rekindle en Herdr](preview.png)
+## Vista previa
+
+![El panel de Rekindle en Herdr al cambiar entre inglés y español](preview.gif)
+
+[Captura estática](preview.png)
 
 ## Instalación
 

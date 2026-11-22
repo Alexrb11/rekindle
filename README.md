@@ -8,7 +8,11 @@ Reopen the Codex chats you left in Herdr when you start the desktop app after a 
 
 [Download the latest release](https://github.com/Alexrb11/rekindle/releases/latest)
 
-![Rekindle's language selector and saved chat count in Herdr](preview.png)
+## Preview
+
+![Rekindle's panel in Herdr switching between English and Spanish](preview.gif)
+
+[Static screenshot](preview.png)
 
 ## Requirements
 
