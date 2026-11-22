@@ -27,7 +27,13 @@ The initial Windows 11 verification used Herdr Desktop 0.1.16, herdr-core 0.1.21
 
 If Windows marks the downloaded installer as blocked, review the file, then run `Unblock-File -LiteralPath .\Install.ps1` before installing.
 
-Run `.\Install.ps1 -WhatIf` to preview file changes. The installer uses `CODEX_HOME` when set, or `%USERPROFILE%\.codex`, and finds profiles for the installed PowerShell editions. For a custom setup, use `-CodexDirectory` and `-ProfilePaths`. For a symlinked profile, pass its target path. Run the installer again to update an existing installation.
+Run `.\Install.ps1 -WhatIf` to preview file changes. The installer uses `CODEX_HOME` when set, or `%USERPROFILE%\.codex`, and finds profiles for the installed PowerShell editions. For a custom setup, use `-CodexDirectory`, `-ProfilePaths` or `-HerdrAppDirectory`. For a symlinked profile, pass its target path. Run the installer again to update an existing installation.
+
+## Choose the panel language
+
+The installer adds a Rekindle panel in Herdr. Open it with `herdr-app do mod.open --name rekindle`. Choose **English** or **Español** in the panel. Herdr saves your choice and applies it when you reopen Rekindle, including after restarting the app.
+
+The panel shows how many local panes have a saved chat. The left and right arrow keys select English and Spanish while the panel has focus.
 
 ## What comes back
 
@@ -45,7 +51,7 @@ The integration stores the chat ID and the terminal process start time in the `c
 .\Install.ps1 -Uninstall
 ```
 
-Use the same path options if you supplied them at install time. The installer removes its hook, runtime and profile blocks while preserving other profile code and hooks. Your conversations stay available through `codex resume`.
+Use the same path options if you supplied them at install time. The installer removes its panel, hook, runtime and profile blocks while preserving other profile code and hooks. Your conversations stay available through `codex resume`.
 
 ## Verify changes
 

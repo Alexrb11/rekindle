@@ -50,7 +50,8 @@ try {
     $runtime = Join-Path $codexDirectory 'hooks\herdr-codex-session.ps1'
     $fixture = Join-Path $testRoot 'codex.exe'
     Add-Type -Path (Join-Path $PSScriptRoot 'CodexFixture.cs') -OutputAssembly $fixture -OutputType ConsoleApplication
-    & (Join-Path $project 'Install.ps1') -CodexDirectory $codexDirectory -ProfilePaths $profile | Out-Null
+    $appDirectory = Join-Path $testRoot 'Herdr app'
+    & (Join-Path $project 'Install.ps1') -CodexDirectory $codexDirectory -ProfilePaths $profile -HerdrAppDirectory $appDirectory | Out-Null
 
     $bootstrap = @'
 $env:PATH = $PSScriptRoot + [IO.Path]::PathSeparator + $env:PATH

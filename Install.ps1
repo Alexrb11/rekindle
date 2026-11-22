@@ -4,7 +4,8 @@
 param(
     [switch]$Uninstall,
     [string]$CodexDirectory,
-    [string[]]$ProfilePaths
+    [string[]]$ProfilePaths,
+    [string]$HerdrAppDirectory
 )
 
 $ErrorActionPreference = 'Stop'
@@ -13,6 +14,10 @@ if (!$CodexDirectory) {
     $CodexDirectory = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE '.codex' }
 }
 $CodexDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($CodexDirectory)
+if (!$HerdrAppDirectory) {
+    $HerdrAppDirectory = if ($env:HERDR_APP_HOME) { $env:HERDR_APP_HOME } else { Join-Path $env:USERPROFILE '.config\herdr-app' }
+}
+$HerdrAppDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($HerdrAppDirectory)
 if (!$ProfilePaths) {
     $ProfilePaths = foreach ($shellName in @('powershell.exe', 'pwsh.exe')) {
         $shell = Get-Command $shellName -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -23,6 +28,8 @@ if (!$ProfilePaths) { throw 'No PowerShell profiles were found. Use -ProfilePath
 
 $runtimePath = Join-Path $CodexDirectory 'hooks\herdr-codex-session.ps1'
 $hooksPath = Join-Path $CodexDirectory 'hooks.json'
+$panelDirectory = Join-Path $HerdrAppDirectory 'mods\rekindle'
+$panelFiles = @('main.js', 'mod.json')
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 $utf8WithBom = [Text.UTF8Encoding]::new($true, $true)
 $managedStart = '# >>> herdr-codex-resume >>>'
@@ -173,11 +180,29 @@ if ($env:HC_TERMINAL_ID -and $env:HC_TERMINAL_SOCKET -and !$env:CODEX_SESSION_ID
     Add-FileEdit $file ([byte[]]($file.Encoding.GetPreamble() + $file.Encoding.GetBytes($updated)))
 }
 
+function Add-PanelEdits {
+    foreach ($name in $panelFiles) {
+        $file = Read-EditableFile (Join-Path $panelDirectory $name)
+        $owned = if ($name -eq 'main.js') {
+            $file.Text.StartsWith('// Rekindle mod for Herdr Desktop', [StringComparison]::Ordinal)
+        } else {
+            $file.Text -cmatch '"description"\s*:\s*"Rekindle for Herdr\b'
+        }
+        if ($Uninstall) {
+            if ($owned) { Add-FileEdit $file $null }
+            continue
+        }
+        if ($null -ne $file.Bytes -and !$owned) { throw "An unrelated mod file already exists at $($file.Path)." }
+        Add-FileEdit $file ([IO.File]::ReadAllBytes((Join-Path $PSScriptRoot "mods\rekindle\$name")))
+    }
+}
+
 $profileFiles = @($ProfilePaths | Where-Object { $_ } | ForEach-Object {
     $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($_)
 } | Sort-Object -Unique)
-if (!$profileFiles.Count -or $profileFiles -contains $runtimePath -or $profileFiles -contains $hooksPath) {
-    throw 'Supply distinct paths for the PowerShell profiles and Codex files.'
+$managedPaths = @($runtimePath, $hooksPath) + @($panelFiles | ForEach-Object { Join-Path $panelDirectory $_ })
+if (!$profileFiles.Count -or @($profileFiles | Where-Object { $_ -in $managedPaths }).Count) {
+    throw 'Supply distinct paths for the PowerShell profiles and managed files.'
 }
 
 $runtime = Read-EditableFile $runtimePath
@@ -188,6 +213,7 @@ if (!$Uninstall) {
 }
 Add-HookEdit
 foreach ($profileFile in $profileFiles) { Add-ProfileEdit $profileFile }
+Add-PanelEdits
 if ($Uninstall -and $ownsRuntime) { Add-FileEdit $runtime $null }
 
 if ($edits.Count) {
@@ -216,4 +242,5 @@ if ($Uninstall) {
     Write-Output 'Rekindle has been removed.'
 } else {
     Write-Output 'Rekindle is installed. In a new Codex CLI session, open /hooks and trust the SessionStart hook that runs herdr-codex-session.ps1.'
+    Write-Output 'Open the panel with herdr-app do mod.open --name rekindle.'
 }

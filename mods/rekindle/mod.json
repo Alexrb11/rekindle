@@ -1,0 +1,9 @@
+{
+  "place": "none",
+  "description": "Rekindle for Herdr shows saved Codex chats and remembers your language.",
+  "overlay": {
+    "kind": "dialog",
+    "width": 456,
+    "height": 218
+  }
+}

@@ -24,13 +24,19 @@ Si Windows bloquea el instalador descargado, revisa el archivo y ejecuta `Unbloc
 
 La restauración vuelve a abrir el chat y queda a la espera de que escribas. Si sales de Codex y mantienes abierto el panel, se conserva el último chat de ese panel. Las conversaciones de paneles que hayas cerrado siguen disponibles con `codex resume --all`.
 
+## Cambiar el idioma del panel
+
+El instalador añade el panel de Rekindle a Herdr. Ábrelo con `herdr-app do mod.open --name rekindle` y elige **English** o **Español**. Herdr recuerda tu elección al volver a abrir el panel, incluso después de reiniciar la aplicación.
+
+El panel muestra cuántas terminales locales tienen un chat guardado. También puedes cambiar de idioma con las flechas izquierda y derecha cuando el panel tiene el foco.
+
 ## Desinstalación
 
 ```powershell
 .\Install.ps1 -Uninstall
 ```
 
-El desinstalador quita sus entradas del perfil y de los hooks. El historial permanece en Codex. La [guía en inglés](README.md) describe los perfiles personalizados, las versiones comprobadas y las pruebas.
+El desinstalador quita el panel y sus entradas del perfil y de los hooks. El historial permanece en Codex. La [guía en inglés](README.md) describe los perfiles personalizados, las versiones comprobadas y las pruebas.
 
 ## Créditos
 
