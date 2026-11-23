@@ -1,0 +1,89 @@
+{
+  "id": "root",
+  "type": "row",
+  "titlebar": "none",
+  "traffic_lights": [12, 15],
+  "theme": "rekindle",
+  "preview": "layouts/rekindle.png",
+  "background": "canvas",
+  "terminal_padding": [14, 12],
+  "divider": { "width": 1, "color": "border" },
+  "children": [
+    {
+      "id": "sidebar",
+      "type": "block",
+      "size": { "px": 350 },
+      "min": 300,
+      "max": 540,
+      "content": { "mod": "rekindle-sidebar" }
+    },
+    {
+      "id": "work",
+      "type": "column",
+      "resizable": false,
+      "children": [
+        {
+          "id": "tabs",
+          "type": "block",
+          "size": { "px": 42 },
+          "window_drag": true,
+          "content": { "mod": "rekindle-tabs" }
+        },
+        {
+          "id": "work-body",
+          "type": "row",
+          "padding": 8,
+          "gap": 8,
+          "children": [
+            {
+              "id": "main",
+              "type": "block",
+              "content": {
+                "tab": "active",
+                "pane": {
+                  "gap": 8,
+                  "radius": 8,
+                  "background": "background",
+                  "lone": true,
+                  "border": { "width": 1, "color": "border" },
+                  "focus": { "width": 1, "color": "accent" },
+                  "header": {
+                    "content": { "mod": "pane" },
+                    "height": 30,
+                    "position": "top",
+                    "reveal": "always"
+                  }
+                }
+              }
+            },
+            {
+              "id": "panel",
+              "type": "column",
+              "hidden": true,
+              "size": { "px": 340 },
+              "min": 280,
+              "max": 760,
+              "children": [
+                {
+                  "id": "panel-body",
+                  "type": "stack",
+                  "active": "files",
+                  "children": [
+                    { "id": "files", "type": "block", "content": { "mod": "files" } },
+                    { "id": "changes", "type": "block", "content": { "mod": "changes" } }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "status",
+          "type": "block",
+          "size": { "px": 28 },
+          "content": { "mod": "rekindle-status" }
+        }
+      ]
+    }
+  ]
+}

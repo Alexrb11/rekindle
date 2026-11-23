@@ -17,7 +17,11 @@ jobs:
           persist-credentials: false
       - name: Test with Windows PowerShell 5.1
         shell: powershell
-        run: .\tests\Install.Tests.ps1
+        run: |
+          .\tests\Install.Tests.ps1
+          .\tests\Layout.Tests.ps1
       - name: Test with PowerShell 7
         shell: pwsh
-        run: .\tests\Install.Tests.ps1
+        run: |
+          .\tests\Install.Tests.ps1
+          .\tests\Layout.Tests.ps1

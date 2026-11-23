@@ -1,0 +1,5 @@
+{
+  "place": "none",
+  "description": "Launch agents with type and project skills, or delegate work to a subagent.",
+  "overlay": { "kind": "dialog", "width": 500, "height": 550 }
+}

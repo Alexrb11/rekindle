@@ -1,0 +1,9 @@
+{
+  "place": "none",
+  "description": "Inspect Codex deliveries, changed files, and checks.",
+  "overlay": {
+    "kind": "dialog",
+    "width": 800,
+    "height": 570
+  }
+}

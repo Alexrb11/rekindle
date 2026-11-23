@@ -1,52 +1,63 @@
 # <img src="media/agent.png" width="52" height="52" align="absmiddle" alt=""> Rekindle
 
-**Para usuarios de Codex CLI en Herdr de escritorio para Windows.**
+**Layout de código abierto para Codex CLI en Herdr Desktop para Windows.**
 
 [Read in English](README.md)
 
-Mod de código abierto para Herdr Desktop en Windows. Rekindle recupera los chats de Codex CLI en sus paneles originales tras reiniciar Windows. La demo muestra cómo elegir skills del proyecto, seguir el estado de agentes y subagentes con sus sprites animados y delegar tareas en Taller.
+Rekindle reúne los proyectos, agentes y subagentes en un mismo espacio. Los sprites animados muestran quién está trabajando, quién necesita atención y quién ha terminado. Cada agente arranca con las skills de su tipo y las que elijas para el proyecto. Puedes delegarle tareas a un subagente y seguir su progreso desde el equipo.
 
 [Descargar la última versión](https://github.com/Alexrb11/rekindle/releases/latest)
 
 ## Vista previa
 
-![Selección de una skill del proyecto, delegación de una tarea y seguimiento del subagente en Taller](preview.gif)
+![Selección de una skill, delegación de una tarea y seguimiento del subagente en Rekindle](preview.gif)
 
 Grabada en Herdr con proyectos y un motor de ejemplo.
 
-[Vídeo en inglés (MP4)](media/demo.mp4?raw=true) · [Captura estática](preview.png)
+[Vídeo en inglés (MP4)](media/demo.mp4?raw=true) · [Captura del layout](layout/preview.png)
 
 ## Instalación
 
 Necesitas Herdr de escritorio con herdr-core, Codex CLI y una terminal de Herdr que cargue un perfil de PowerShell. [Herdr para Windows](https://herdr.dev/download/), [Codex CLI](https://developers.openai.com/codex/cli/)
 
 1. Descarga y extrae el ZIP, o clona el código. Abre PowerShell en la carpeta del proyecto.
-2. Ejecuta el instalador.
+2. Instala el layout y la recuperación de chats.
 
    ```powershell
-   .\Install.ps1
+   .\Install.ps1 -Component All
    ```
 
-3. Abre un panel nuevo de Codex desde Herdr. Escribe `/hooks` y marca como confiable el hook `SessionStart` que ejecuta `herdr-codex-session.ps1`. [Revisión de hooks de Codex](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks)
-4. Envía un primer mensaje y deja el panel abierto para que se recupere en el siguiente arranque.
+3. Abre Herdr y selecciona Rekindle.
 
-Si Windows bloquea el instalador descargado, revisa el archivo y ejecuta `Unblock-File -LiteralPath .\Install.ps1` antes de instalar. Puedes usar `.\Install.ps1 -WhatIf` para ver los archivos que modificará.
+   ```powershell
+   herdr-app do layout.switch --name rekindle
+   ```
 
-La restauración vuelve a abrir el chat y queda a la espera de que escribas. Si sales de Codex y mantienes abierto el panel, se conserva el último chat de ese panel. Las conversaciones de paneles que hayas cerrado siguen disponibles con `codex resume --all`.
+Usa `-Component Layout` para instalar el layout, la paleta, los sprites y los paneles. Usa `-Component Chats` para instalar la recuperación y su panel independiente. Añade `-WhatIf` para revisar los cambios. Si Windows bloquea el instalador descargado, revisa el archivo y ejecuta `Unblock-File -LiteralPath .\Install.ps1`.
 
-## Cambiar el idioma del panel
+## Usar Rekindle
 
-El instalador añade el panel de Rekindle a Herdr. Ábrelo con `herdr-app do mod.open --name rekindle` y elige **English** o **Español**. Herdr recuerda tu elección al volver a abrir el panel, incluso después de reiniciar la aplicación.
+- Pulsa **Abrir carpeta** para añadir un proyecto. Pulsa su icono para elegir un color de sprite o un logo propio. Despliega el equipo para ver a sus agentes y subagentes.
+- En **Nuevo agente**, elige su tipo o crea uno con **Nuevo tipo**. Configura las skills de inicio por nombre o ruta al archivo `SKILL.md`. También puedes elegir las del proyecto en `.agents/skills/<nombre>/SKILL.md`.
+- Pulsa **Delegar** en un agente activo, elige un tipo y describe la tarea. El subagente aparece en el equipo de ese agente. Selecciónalo para consultar su terminal.
+- Abre **Entregas** para revisar resultados de Codex, archivos modificados y pruebas. La barra de estado muestra el uso de Codex y permite configurar un aviso de cuota baja.
+- Pulsa **EN** o **ES** en la barra lateral para cambiar el idioma. Herdr recuerda el ajuste y lo aplica al panel de recuperación.
 
-El panel muestra cuántas terminales locales tienen un chat guardado. También puedes cambiar de idioma con las flechas izquierda y derecha cuando el panel tiene el foco.
+El layout usa la terminal y los paneles de archivos y cambios de Herdr. En Windows lee los registros locales de Codex, ejecuta Git para los diffs y consulta la cuota mediante el servidor de Codex instalado. [Receta del layout](layout/RECIPE.md)
+
+## Recuperar chats
+
+Con `-Component All` o `-Component Chats`, abre un panel nuevo de Codex. Escribe `/hooks` y marca como confiable el hook `SessionStart` que ejecuta `herdr-codex-session.ps1`. Envía un mensaje y deja el panel abierto para el próximo inicio. [Revisión de hooks de Codex](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks)
+
+Abre el contador de chats guardados con `herdr-app do mod.open --name rekindle`. Los chats de paneles que hayas cerrado siguen disponibles con `codex resume --all`.
 
 ## Desinstalación
 
 ```powershell
-.\Install.ps1 -Uninstall
+.\Install.ps1 -Component All -Uninstall
 ```
 
-El desinstalador quita el panel y sus entradas del perfil y de los hooks. El historial permanece en Codex. La [guía en inglés](README.md) describe los perfiles personalizados, las versiones comprobadas y las pruebas.
+Cambia de layout antes de desinstalar y usa las mismas opciones de componente y rutas que en la instalación. El desinstalador conserva los archivos del layout que hayas editado, los tipos de agente, tus otros hooks y las conversaciones.
 
 ## Créditos
 

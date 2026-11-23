@@ -1,51 +1,62 @@
 # <img src="media/agent.png" width="52" height="52" align="absmiddle" alt=""> Rekindle
 
-**For Codex CLI users running Herdr Desktop on Windows.**
+**An open-source Herdr Desktop layout for Codex CLI on Windows.**
 
 [Leer en español](README.es.md)
 
-Open-source mod for Herdr Desktop on Windows. Rekindle restores Codex CLI chats in their original panes after a Windows restart. The demo shows how to choose project skills, follow agents and subagents through their animated sprites, and delegate tasks in Taller.
+Rekindle groups projects, agents, and subagents in one workspace. Animated sprites show who's working, who needs attention, and who has finished. Launch an agent with the skills for its type and project, then delegate tasks from that agent and follow its subagents in the same team.
 
 [Download the latest release](https://github.com/Alexrb11/rekindle/releases/latest)
 
 ## Preview
 
-![Selecting a project skill, delegating a task, and watching the subagent finish in Taller](preview.gif)
+![Selecting a project skill, delegating a task, and watching the subagent finish in Rekindle](preview.gif)
 
 Recorded in Herdr with sample projects and a demo engine.
 
-[MP4 video](media/demo.mp4?raw=true) · [Static screenshot](preview.png)
+[MP4 video](media/demo.mp4?raw=true) · [Layout screenshot](layout/preview.png)
 
 ## Requirements
 
 - Windows with Herdr Desktop, its local herdr-core, and Codex CLI.
 - A Herdr shell running Windows PowerShell 5.1 or PowerShell 7. The Codex hook uses the Windows PowerShell executable.
 
-The initial Windows 11 verification used Herdr Desktop 0.1.16, herdr-core 0.1.21, Codex CLI 0.171.0, and Windows PowerShell 5.1. [Herdr Desktop](https://herdr.dev/download/), [Codex CLI](https://developers.openai.com/codex/cli/)
+The full layout was verified on Windows 11 with Herdr Desktop 0.1.17 and herdr-core 0.1.22. Its installer was tested with Windows PowerShell 5.1 and PowerShell 7. [Herdr Desktop](https://herdr.dev/download/) · [Codex CLI](https://developers.openai.com/codex/cli/)
 
 ## Install
 
 1. Download and extract the release ZIP, or clone the source. Open PowerShell in the project folder.
-2. Run the installer.
+2. Install the layout and chat recovery.
 
    ```powershell
-   .\Install.ps1
+   .\Install.ps1 -Component All
    ```
 
-3. Open a **new** Codex pane from the Herdr tab bar. Run `/hooks` and trust the `SessionStart` hook whose command runs `herdr-codex-session.ps1`. Codex asks for this once per hook definition. [Codex hook review](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks)
-4. Send a message in that pane. Leave the pane open to bring the chat back on the next startup.
+3. Open Herdr and switch to Rekindle.
 
-If Windows marks the downloaded installer as blocked, review the file, then run `Unblock-File -LiteralPath .\Install.ps1` before installing.
+   ```powershell
+   herdr-app do layout.switch --name rekindle
+   ```
 
-Run `.\Install.ps1 -WhatIf` to preview file changes. The installer uses `CODEX_HOME` when set, or `%USERPROFILE%\.codex`, and finds profiles for the installed PowerShell editions. For a custom setup, use `-CodexDirectory`, `-ProfilePaths` or `-HerdrAppDirectory`. For a symlinked profile, pass its target path. Run the installer again to update an existing installation.
+Use `-Component Layout` to install the layout, palette, sprites, and workspace panels. Use `-Component Chats` to install chat recovery and its standalone panel. Add `-WhatIf` to preview file changes. If Windows blocks the downloaded installer, review it and run `Unblock-File -LiteralPath .\Install.ps1`.
 
-## Choose the panel language
+## Use Rekindle
 
-The installer adds a Rekindle panel in Herdr. Open it with `herdr-app do mod.open --name rekindle`. Choose **English** or **Español** in the panel. Herdr saves your choice and applies it when you reopen Rekindle, including after restarting the app.
+- Choose **Open folder** to add a project. Click its icon to change the sprite color or set a custom logo. Expand a team to see its agents and subagents.
+- In **New agent**, choose a type or create one with **New type**. Set its startup skills by name or `SKILL.md` path. Choose additional project skills from `.agents/skills/<name>/SKILL.md`.
+- From a running agent, choose **Delegate**, select a type, and describe the task. The subagent appears in that agent's team. Select it to inspect its terminal.
+- Open **Deliveries** to review Codex results, changed files, and checks. The status bar shows Codex usage and can alert when a quota drops below your chosen threshold.
+- Select **EN** or **ES** in the sidebar to change language. Herdr remembers the choice and shares it with the chat recovery panel.
 
-The panel shows how many local panes have a saved chat. The left and right arrow keys select English and Spanish while the panel has focus.
+The layout uses Herdr's native terminal, Files, and Changes panels. Its Windows status and delivery panels read local Codex session records, run Git for diffs, and ask the installed Codex app server for quota. [Layout recipe](layout/RECIPE.md)
 
-## What comes back
+## Chat recovery
+
+With `-Component All` or `-Component Chats`, open a new Codex pane. Use `/hooks` to trust the `SessionStart` hook that runs `herdr-codex-session.ps1`. Send a message and keep the pane open for the next startup. [Codex hook review](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks)
+
+Open the saved-chat count and language controls with `herdr-app do mod.open --name rekindle`.
+
+The chat installer uses `CODEX_HOME` when set, or `%USERPROFILE%\.codex`, and finds profiles for the installed PowerShell editions. For a custom setup, use `-CodexDirectory`, `-ProfilePaths`, or `-HerdrAppDirectory`. For a symlinked profile, pass its target path.
 
 The first message makes a new Codex chat available to resume. Herdr's Codex menu gives each pane an independent Codex process. The installer also gives plain `codex` the same behavior inside new Herdr PowerShell panes, where you have no existing alias or function for it. With a custom launcher, start Codex with `--no-daemon`. [Herdr program launch documentation](https://github.com/herdrdev/herdr-app/blob/master/defaults/AGENTS.md#programs-programsjson)
 
@@ -58,15 +69,16 @@ The integration stores the chat ID and the terminal process start time in the `c
 ## Uninstall
 
 ```powershell
-.\Install.ps1 -Uninstall
+.\Install.ps1 -Component All -Uninstall
 ```
 
-Use the same path options if you supplied them at install time. The installer removes its panel, hook, runtime and profile blocks while preserving other profile code and hooks. Your conversations stay available through `codex resume`.
+Switch to another layout first. Use the same component and path options as at install time. The installer preserves edited layout files, agent type settings, other hooks, and conversations.
 
 ## Verify changes
 
 ```powershell
 .\tests\Install.Tests.ps1
+.\tests\Layout.Tests.ps1
 powershell.exe -NoProfile -File .\tests\Resume.Tests.ps1
 ```
 

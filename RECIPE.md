@@ -22,7 +22,7 @@ English is the initial choice. Herdr keeps the most recent selection for the nex
 
 ## Watch out
 
-The panel is the Herdr companion to the PowerShell installer. Set up the runtime and approve its Codex hook using the [installation guide](README.md) to start recording chats. Codex creates a resumable conversation after its first message.
+The panel is the Herdr companion to the PowerShell installer. Set up the recovery hook to start recording chat IDs after the first message. The full Rekindle workspace, including its animated sprites, has a separate recipe. [Chat recovery](README.md#chat-recovery) · [Rekindle layout](layout/RECIPE.md)
 
 ## Done when
 

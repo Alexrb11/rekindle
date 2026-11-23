@@ -1,0 +1,5 @@
+{
+  "layout:rekindle": {
+    "ctrl-shift-j": "rekindle-sidebar.next-pending"
+  }
+}

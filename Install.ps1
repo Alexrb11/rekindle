@@ -5,11 +5,15 @@ param(
     [switch]$Uninstall,
     [string]$CodexDirectory,
     [string[]]$ProfilePaths,
-    [string]$HerdrAppDirectory
+    [string]$HerdrAppDirectory,
+    [ValidateSet('Chats', 'Layout', 'All')]
+    [string]$Component = 'Chats'
 )
 
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Rekindle requires Windows.' }
+$includeChats = $Component -ne 'Layout'
+$includeLayout = $Component -ne 'Chats'
 if (!$CodexDirectory) {
     $CodexDirectory = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE '.codex' }
 }
@@ -18,13 +22,13 @@ if (!$HerdrAppDirectory) {
     $HerdrAppDirectory = if ($env:HERDR_APP_HOME) { $env:HERDR_APP_HOME } else { Join-Path $env:USERPROFILE '.config\herdr-app' }
 }
 $HerdrAppDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($HerdrAppDirectory)
-if (!$ProfilePaths) {
+if ($includeChats -and !$ProfilePaths) {
     $ProfilePaths = foreach ($shellName in @('powershell.exe', 'pwsh.exe')) {
         $shell = Get-Command $shellName -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($shell) { & $shell.Source -NoLogo -NoProfile -NonInteractive -Command '$PROFILE.CurrentUserCurrentHost' }
     }
 }
-if (!$ProfilePaths) { throw 'No PowerShell profiles were found. Use -ProfilePaths to specify the profile Herdr loads.' }
+if ($includeChats -and !$ProfilePaths) { throw 'No PowerShell profiles were found. Use -ProfilePaths to specify the profile Herdr loads.' }
 
 $runtimePath = Join-Path $CodexDirectory 'hooks\herdr-codex-session.ps1'
 $hooksPath = Join-Path $CodexDirectory 'hooks.json'
@@ -44,12 +48,13 @@ function Get-FileBytes([string]$Path) {
     if ([IO.File]::Exists($Path)) { return ,([IO.File]::ReadAllBytes($Path)) }
 }
 
-function Read-EditableFile([string]$Path, [switch]$Profile) {
+function Read-EditableFile([string]$Path, [switch]$Profile, [switch]$Binary) {
     $file = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
     if ($file -and ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint))) {
         throw "Expected a regular file at $Path. For a linked PowerShell profile, supply the target with -ProfilePaths."
     }
     $bytes = Get-FileBytes $Path
+    if ($Binary) { return [pscustomobject]@{ Path = $Path; Bytes = $bytes } }
     $encoding = if ($Profile) { $utf8WithBom } else { $utf8 }
     $contents = ''
     if ($null -ne $bytes) {
@@ -197,24 +202,30 @@ function Add-PanelEdits {
     }
 }
 
-$profileFiles = @($ProfilePaths | Where-Object { $_ } | ForEach-Object {
-    $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($_)
-} | Sort-Object -Unique)
-$managedPaths = @($runtimePath, $hooksPath) + @($panelFiles | ForEach-Object { Join-Path $panelDirectory $_ })
-if (!$profileFiles.Count -or @($profileFiles | Where-Object { $_ -in $managedPaths }).Count) {
-    throw 'Supply distinct paths for the PowerShell profiles and managed files.'
-}
+if ($includeChats) {
+    $profileFiles = @($ProfilePaths | Where-Object { $_ } | ForEach-Object {
+        $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($_)
+    } | Sort-Object -Unique)
+    $managedPaths = @($runtimePath, $hooksPath) + @($panelFiles | ForEach-Object { Join-Path $panelDirectory $_ })
+    if (!$profileFiles.Count -or @($profileFiles | Where-Object { $_ -in $managedPaths }).Count) {
+        throw 'Supply distinct paths for the PowerShell profiles and managed files.'
+    }
 
-$runtime = Read-EditableFile $runtimePath
-$ownsRuntime = $runtime.Text.StartsWith('# Herdr Codex Resume', [StringComparison]::Ordinal)
-if (!$Uninstall) {
-    if ($null -ne $runtime.Bytes -and !$ownsRuntime) { throw "An unrelated runtime already exists at $runtimePath." }
-    Add-FileEdit $runtime ([IO.File]::ReadAllBytes((Join-Path $PSScriptRoot 'src\herdr-codex-session.ps1')))
+    $runtime = Read-EditableFile $runtimePath
+    $ownsRuntime = $runtime.Text.StartsWith('# Herdr Codex Resume', [StringComparison]::Ordinal)
+    if (!$Uninstall) {
+        if ($null -ne $runtime.Bytes -and !$ownsRuntime) { throw "An unrelated runtime already exists at $runtimePath." }
+        Add-FileEdit $runtime ([IO.File]::ReadAllBytes((Join-Path $PSScriptRoot 'src\herdr-codex-session.ps1')))
+    }
+    Add-HookEdit
+    foreach ($profileFile in $profileFiles) { Add-ProfileEdit $profileFile }
+    Add-PanelEdits
+    if ($Uninstall -and $ownsRuntime) { Add-FileEdit $runtime $null }
 }
-Add-HookEdit
-foreach ($profileFile in $profileFiles) { Add-ProfileEdit $profileFile }
-Add-PanelEdits
-if ($Uninstall -and $ownsRuntime) { Add-FileEdit $runtime $null }
+if ($includeLayout) {
+    . (Join-Path $PSScriptRoot 'src/install-layout.ps1')
+    Add-LayoutEdits (Join-Path $PSScriptRoot 'layout')
+}
 
 if ($edits.Count) {
     $action = if ($Uninstall) { 'Remove Rekindle' } else { 'Install Rekindle' }
@@ -241,6 +252,11 @@ if ($edits.Count) {
 if ($Uninstall) {
     Write-Output 'Rekindle has been removed.'
 } else {
-    Write-Output 'Rekindle is installed. In a new Codex CLI session, open /hooks and trust the SessionStart hook that runs herdr-codex-session.ps1.'
-    Write-Output 'Open the panel with herdr-app do mod.open --name rekindle.'
+    if ($includeChats) {
+        Write-Output 'Rekindle chat recovery is installed. In a new Codex CLI session, open /hooks and trust the SessionStart hook that runs herdr-codex-session.ps1.'
+        Write-Output 'Open the panel with herdr-app do mod.open --name rekindle.'
+    }
+    if ($includeLayout) {
+        Write-Output 'Open Herdr, then select the Rekindle layout with herdr-app do layout.switch --name rekindle.'
+    }
 }
