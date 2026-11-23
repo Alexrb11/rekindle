@@ -6,7 +6,7 @@ import { agentCommand, appendSkillFiles, delegationArgs, normalizeProfile, parse
 import { runChecked, showError } from "./errors.js";
 import { pickExplorerFiles } from "./file-picker.js";
 import { hasProjectFolder, launchSkills, listProjectSkills, PROJECT_SKILLS_DIR } from "./project-skills.js";
-import { SPRITES, assignedSprite, saveSpriteChoices, skillSpriteKey, spriteAssignments, spriteForSkills, spriteTile } from "./skill-sprites.js";
+import { TYPE_SPRITES, spriteForType, spriteTile } from "./skill-sprites.js";
 
 function button(id, label, t, action, { primary = false, enabled = true } = {}) {
   return h_flex().id(id).flex_none().h(28).px(8).gap(5).rounded(3).items_center().justify_center()
@@ -23,6 +23,7 @@ export default class AgentPicker extends View {
     const options = props() ?? {};
     this.parent = options.parent ?? null;
     this.parentName = options.parentName;
+    this.parentType = options.parentType;
     this.parentCreated = options.parentCreated;
     this.target = options.space ?? (this.parent ? null : spaces().find(space => space.active)?.id ?? null);
     if (this.parent) {
@@ -59,7 +60,7 @@ export default class AgentPicker extends View {
       try {
         const source = await readTextFile(this.path);
         this.types = parseProfiles(source);
-        if (this.parent && this.selected < 0) this.selected = this.types.findIndex(type => type.name === this.parentName);
+        if (this.parent && this.selected < 0) this.selected = this.types.findIndex(type => type.name === this.parentType);
         this.source = source;
       } catch (error) {
         this.profileError = true;
@@ -160,11 +161,11 @@ export default class AgentPicker extends View {
       index,
       name: InputState.new({ value: current?.name ?? "", placeholder: tr("Por ejemplo, Revisión de código") }),
       skills: TextareaState.new({ value: current?.skills.join("\n") ?? "", placeholder: tr("Una skill por línea"), rows: 5 }),
-      sprites: new Map()
+      sprite: spriteForType(current).id,
+      confirmingRemoval: false
     };
     this.edit.name.on("submit", () => this.edit?.skills.focus());
     this.edit.skills.on("submit", (event, cx) => { if (event?.secondary) this.save(cx); });
-    this.edit.skills.on("change", (_event, cx) => cx.notify());
     this.edit.name.focus();
     cx.notify();
   }
@@ -175,9 +176,17 @@ export default class AgentPicker extends View {
     cx.notify();
   }
 
+  setRemovalConfirmation(confirming, cx) {
+    if (!this.edit || this.saving || this.pickingSkills) return;
+    this.edit.confirmingRemoval = confirming;
+    if (confirming) this.handle.focus();
+    else this.edit.name.focus();
+    cx.notify();
+  }
+
   chooseSkills(cx) {
     const edit = this.edit;
-    if (!edit || this.pickingSkills || this.saving) return;
+    if (!edit || edit.confirmingRemoval || this.pickingSkills || this.saving) return;
     const userHome = home();
     const project = this.project();
     const folders = project?.folder && !project.machine ? [project.folder + "/.agents/skills"] : [];
@@ -202,14 +211,14 @@ export default class AgentPicker extends View {
   }
 
   save(cx) {
-    if (!this.edit || this.saving || this.pickingSkills) return;
+    if (!this.edit || this.edit.confirmingRemoval || this.saving || this.pickingSkills) return;
     const edit = this.edit;
-    const { index, name, skills, sprites } = edit;
+    const { index, name, skills, sprite } = edit;
     const nameText = name.value();
     const skillsText = skills.value();
     let updated;
     try {
-      updated = normalizeProfile({ name: nameText, skills: skillLines(skillsText) });
+      updated = normalizeProfile({ name: nameText, skills: skillLines(skillsText), sprite });
       if (this.types.some((type, i) => i !== index && type.name.toLowerCase() === updated.name.toLowerCase())) {
         throw new Error(tr("Ya existe un tipo con ese nombre."));
       }
@@ -220,6 +229,25 @@ export default class AgentPicker extends View {
     const types = [...this.types];
     const slot = index < 0 ? types.length : index;
     types[slot] = updated;
+    this.writeTypes(types, edit, cx, cx => {
+      edit.index = slot;
+      this.selected = slot;
+      if (!this.closed && edit.sprite === sprite && name.value() === nameText && skills.value() === skillsText) this.finishEdit(cx);
+    });
+  }
+
+  removeType(cx) {
+    const edit = this.edit;
+    if (!edit?.confirmingRemoval || this.saving || this.pickingSkills || !this.types[edit.index]) return;
+    const selected = this.types[this.selected];
+    const types = this.types.filter((_type, index) => index !== edit.index);
+    this.writeTypes(types, edit, cx, cx => {
+      this.selected = this.selected === edit.index ? Math.min(edit.index, types.length - 1) : types.indexOf(selected);
+      if (!this.closed) this.finishEdit(cx);
+    });
+  }
+
+  writeTypes(types, edit, cx, onSaved) {
     const next = JSON.stringify(types, null, 2) + "\n";
     this.saving = true;
     cx.notify();
@@ -228,41 +256,49 @@ export default class AgentPicker extends View {
         try {
           await writeTextFile(this.path, next, this.source);
         } catch (error) {
-          await this.recoverSave(edit, error);
+          await this.recoverWrite(edit, error, cx);
           return;
         }
         this.types = types;
         this.source = next;
-        edit.index = slot;
-        this.selected = slot;
-        saveSpriteChoices(updated.skills, sprites);
-        if (!this.closed && name.value() === nameText && skills.value() === skillsText) this.finishEdit(cx);
-      } catch (error) {
-        this.problem(tr("No se pudieron guardar los colores"), tr("El tipo se guardó. Pulsa Guardar tipo para aplicar los colores de nuevo."), error);
+        onSaved(cx);
       } finally {
         this.saving = false;
-        cx.notify();
+        if (!this.closed) cx.notify();
       }
     });
   }
 
-  async recoverSave(edit, error) {
+  async recoverWrite(edit, error, cx) {
+    const removing = edit.confirmingRemoval;
+    const title = removing ? tr("No se pudo eliminar el tipo") : tr("No se pudo guardar el tipo");
     let source, types;
     try {
       source = await readTextFile(this.path);
       types = parseProfiles(source);
     } catch (reloadError) {
-      this.problem(tr("No se pudo guardar el tipo"), tr("El borrador sigue abierto. Revisa que data/rekindle-agent-types.json sea válido y se pueda leer antes de volver a guardar."), reloadError);
+      this.problem(title, tr("Revisa que data/rekindle-agent-types.json sea válido y se pueda leer antes de volver a intentarlo."), reloadError);
       return;
     }
     if (source === this.source) {
-      this.problem(tr("No se pudo guardar el tipo"), tr("El borrador sigue abierto. Comprueba que Herdr pueda escribir en data/rekindle-agent-types.json y vuelve a guardar."), error);
+      this.problem(title, tr("Comprueba que Herdr pueda escribir en data/rekindle-agent-types.json y vuelve a intentarlo."), error);
       return;
     }
     const originalName = this.types[edit.index]?.name.toLowerCase();
+    const selectedName = this.types[this.selected]?.name.toLowerCase();
     this.source = source;
     this.types = types;
     edit.index = types.findIndex(type => type.name.toLowerCase() === originalName);
+    if (removing) {
+      this.selected = types.findIndex(type => type.name.toLowerCase() === selectedName);
+      if (edit.index < 0) {
+        if (!this.closed) this.finishEdit(cx);
+        return;
+      }
+      edit.confirmingRemoval = false;
+      this.problem(tr("La lista de tipos cambió"), tr("Se recargó la lista. Revisa el tipo antes de volver a eliminarlo."));
+      return;
+    }
     this.selected = edit.index;
     this.problem(tr("La lista de tipos cambió"), originalName && edit.index < 0
       ? tr("El tipo original ya no está en la lista. Si guardas el borrador, se añadirá como un tipo nuevo.")
@@ -367,6 +403,11 @@ export default class AgentPicker extends View {
   }
 
   onKey(event, cx) {
+    if (event.key === "escape" && this.edit?.confirmingRemoval) {
+      cx.stop_propagation();
+      this.setRemovalConfirmation(false, cx);
+      return;
+    }
     if (this.parent || this.edit || this.skillsOpen || event.modifiers.alt || event.modifiers.control || event.modifiers.platform) return;
     if (event.key === "enter") {
       this.launch(cx);
@@ -381,7 +422,7 @@ export default class AgentPicker extends View {
     cx.stop_propagation();
   }
 
-  typeRow(type, index, t, assignments) {
+  typeRow(type, index, t) {
     const active = index === this.selected;
     const labels = type.skills.map(skillLabel).join(" · ");
     const summary = labels || tr("Sin skills preasignadas");
@@ -397,7 +438,7 @@ export default class AgentPicker extends View {
         })
         .when(!this.parent, el => el.child(div().w(12).flex_none().text_color(t.muted)
           .text_center().text_size(10.5).child(index < 9 ? String(index + 1) : "")))
-        .child(spriteTile(spriteForSkills(type.skills, assignments), 25))
+        .child(spriteTile(spriteForType(type), 25))
         .child(v_flex().flex_1().min_w(0)
           .child(div().text_size(13).font_medium().truncate().child(type.name))
           .when(Boolean(labels), el => el.child(div().text_size(11).truncate().text_color(t.muted).child(labels)))))
@@ -405,48 +446,67 @@ export default class AgentPicker extends View {
         .text_color(this.creating ? t.dim : t.muted).accessibility_label(tr("Editar ") + type.name));
   }
 
-  skillSpriteEditor(t, enabled) {
-    const rows = new Map(skillLines(this.edit.skills.value()).map(skill => [skillSpriteKey(skill), skill]));
-    const assignments = spriteAssignments();
-    return v_flex().flex_1().min_h(52).gap(4)
-      .child(div().text_size(12).child(tr("Sprite por skill")))
-      .child(v_flex().id("sprites-por-skill").flex_1().min_h(0).gap(3).overflow_y_scrollbar()
-        .when(!rows.size, el => el.child(div().py(3).text_size(11.5).text_color(t.muted).child(tr("Añade una skill para elegir su sprite."))))
-        .children([...rows].map(([key, skill], index) => {
-          const selected = SPRITES.find(sprite => sprite.id === this.edit.sprites.get(key)) ?? assignedSprite(skill, assignments) ?? SPRITES[0];
-          return h_flex().h(33).flex_none().items_center().gap(6).px(5).border_b(1).border_color(t.border)
-            .child(spriteTile(selected, 26))
-            .child(div().flex_1().min_w(0).truncate().text_size(12).tooltip(skill).child(skillLabel(skill)))
-            .child(div().w(51).flex_none().truncate().text_size(10).text_color(t.muted).child(tr(selected.name)))
-            .children(SPRITES.map(sprite => div().id("sprite-" + index + "-" + sprite.id).size(21).flex_none().rounded_full()
-              .border(1).border_color(sprite.id === selected.id ? t.foreground : t.border)
-              .flex().justify_center().items_center().child(div().size(13).rounded_full().bg(sprite.color))
-              .tooltip(tr(sprite.name)).accessibility_label(tr(sprite.name) + tr(" para ") + skillLabel(skill))
-              .when(enabled, el => el.cursor_pointer().hover(s => s.border_color(t.accent))
-                .on_click((_event, cx) => { this.edit.sprites.set(key, sprite.id); cx.notify(); }))));
-        })));
+  typeSpriteEditor(t, enabled) {
+    const edit = this.edit;
+    const preview = spriteForType(edit);
+    const label = tr("Color del tipo");
+    const swatches = TYPE_SPRITES.map(sprite => {
+      const selected = sprite.id === preview.id;
+      const name = tr(sprite.name);
+      return Button.new("sprite-tipo-" + sprite.id).size(21).flex_none().rounded_full()
+        .border(1).border_color(selected ? t.foreground : t.border)
+        .flex().justify_center().items_center().selected(selected).disabled(!enabled)
+        .child(div().size(13).rounded_full().bg(sprite.color))
+        .tooltip(name).accessibility_label(name + tr(" para ") + label)
+        .when(enabled, el => el.cursor_pointer().hover(s => s.border_color(t.accent))
+          .on_click((_event, cx) => { edit.sprite = sprite.id; cx.notify(); }));
+    });
+    return v_flex().flex_none().gap(5).pb(5).border_b(1).border_color(t.border)
+      .child(h_flex().min_w(0).items_center().gap(6)
+        .child(div().flex_1().min_w(0).truncate().text_size(12).child(label))
+        .child(spriteTile(preview, 24))
+        .child(div().w(86).min_w(0).truncate().text_size(11).text_color(t.muted).child(tr(preview.name))))
+      .child(h_flex().flex_wrap().min_w(0).gap(6).children(swatches));
   }
 
   editForm(t) {
     const field = element => element.px(9).rounded(3)
       .border(1).border_color(t.input).bg(t.background).text_size(13).text_color(t.foreground);
     const ready = !this.saving && !this.pickingSkills;
+    const editable = ready && !this.edit.confirmingRemoval;
     return v_flex().flex_1().min_h(0).gap(12)
       .child(v_flex().gap(5).child(div().text_size(12).child(tr("Nombre del tipo"))).child(field(Input.new(this.edit.name)).h(36)))
-      .child(v_flex().gap(5)
+      .child(v_flex().flex_1().min_h(0).gap(5)
         .child(h_flex().items_center().justify_between().gap(6)
           .child(div().text_size(12).child(tr("Skills de inicio (opcionales)")))
           .when(window()?.platform === "windows", el => el.child(
             button("explorar-skills", this.pickingSkills ? tr("Explorador abierto…") : tr("Añadir SKILL.md…"), t,
-              (_event, cx) => this.chooseSkills(cx), { enabled: ready })
+              (_event, cx) => this.chooseSkills(cx), { enabled: editable })
               .tooltip(tr("Selecciona uno o varios archivos en el explorador")))))
-        .child(field(Textarea.new(this.edit.skills)).h(118)))
-      .child(div().text_size(11.5).text_color(t.muted)
-        .child(tr("Escribe una skill por línea, en el orden de inicio. Usa su nombre o la ruta a su SKILL.md.")))
-      .child(this.skillSpriteEditor(t, ready))
-      .child(h_flex().mt(4).gap(8).justify_end()
-        .child(button("cancelar-edicion", tr("Cancelar"), t, (_event, cx) => this.finishEdit(cx), { enabled: ready }))
-        .child(button("guardar-tipo", this.saving ? tr("Guardando…") : tr("Guardar tipo"), t, (_event, cx) => this.save(cx), { primary: true, enabled: ready })));
+        .child(field(Textarea.new(this.edit.skills)).flex_1().min_h(96))
+        .child(div().text_size(11.5).text_color(t.muted)
+          .child(tr("Escribe una skill por línea, en el orden de inicio. Usa su nombre o la ruta a su SKILL.md."))))
+      .child(this.typeSpriteEditor(t, editable))
+      .child(this.editFooter(t, ready));
+  }
+
+  editFooter(t, ready) {
+    const type = this.types[this.edit.index];
+    const footer = h_flex().flex_none().mt(4).gap(8).items_center();
+    if (type && this.edit.confirmingRemoval) {
+      const question = tr("¿Eliminar «") + type.name + "»?";
+      return footer
+        .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.muted).tooltip(question).child(question))
+        .child(button("cancelar-eliminar-tipo", tr("Cancelar"), t, (_event, cx) => this.setRemovalConfirmation(false, cx), { enabled: ready }))
+        .child(button("confirmar-eliminar-tipo", this.saving ? tr("Eliminando…") : tr("Eliminar tipo"), t,
+          (_event, cx) => this.removeType(cx), { primary: true, enabled: ready }).text_color(ready ? t.ansi1 : t.dim));
+    }
+    return footer
+      .when(Boolean(type), el => el.child(button("pedir-eliminar-tipo", tr("Eliminar tipo…"), t,
+        (_event, cx) => this.setRemovalConfirmation(true, cx), { enabled: ready }).text_color(ready ? t.ansi1 : t.dim)))
+      .child(div().flex_1())
+      .child(button("cancelar-edicion", tr("Cancelar"), t, (_event, cx) => this.finishEdit(cx), { enabled: ready }))
+      .child(button("guardar-tipo", this.saving ? tr("Guardando…") : tr("Guardar tipo"), t, (_event, cx) => this.save(cx), { primary: true, enabled: ready }));
   }
 
   skillSelectionLabel() {
@@ -508,7 +568,6 @@ export default class AgentPicker extends View {
       && !this.loadingTypes && !this.loadingEngines && !this.profileError && !this.agentError
       && (!this.task || this.task.value().trim())
       && !(this.loadingSkills && this.selectedProjectSkills.size));
-    const assignments = spriteAssignments();
     const engines = h_flex().id("motores").gap(5).min_w(0).overflow_x_scrollbar()
       .children(this.engines.map(engine => {
         const icon = engine.icon && (engine.tint ? svg(engine.icon).size(13) : image(engine.icon).size(13));
@@ -522,9 +581,9 @@ export default class AgentPicker extends View {
         .child(div().text_size(12).font_semibold().text_color(t.muted).child(tr("Tipo de agente")))
         .child(button("crear-tipo", tr("+ Nuevo tipo"), t, (_event, cx) => this.startEdit(-1, cx), { enabled: !this.loadingTypes && !this.profileError && !this.creating })))
       .child(v_flex().id("tipos").min_h(0).flex_1().gap(2).overflow_y_scrollbar()
-        .children(this.types.map((type, i) => this.typeRow(type, i, t, assignments)))
+        .children(this.types.map((type, i) => this.typeRow(type, i, t)))
         .when(!this.types.length, el => el.child(div().px(2).py(8).text_size(12).text_color(this.profileError ? t.blocked : t.muted)
-          .child(this.profileError ? tr("No se pudieron cargar los tipos.") : this.loadingTypes ? tr("Cargando tipos…") : tr("Crea un tipo para asociarle skills.")))))
+          .child(this.profileError ? tr("No se pudieron cargar los tipos.") : this.loadingTypes ? tr("Cargando tipos…") : tr("Crea un tipo de agente para empezar.")))))
       .when(this.profileError, el => el.child(h_flex()
         .child(button("reintentar-tipos", tr("Reintentar"), t, (_event, cx) => this.loadProfiles(cx))
           .accessibility_label(tr("Reintentar cargar tipos")))))

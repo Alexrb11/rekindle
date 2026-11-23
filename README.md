@@ -42,9 +42,9 @@ Use `-Component Layout` to install the layout, palette, sprites, and workspace p
 
 ## Use Rekindle
 
-- Choose **Open folder** to add a project. Click its icon to change the sprite color or set a custom logo. Expand a team to see its agents and subagents.
-- In **New agent**, choose a type or create one with **New type**. Set its startup skills by name or `SKILL.md` path. Choose additional project skills from `.agents/skills/<name>/SKILL.md`.
-- From a running agent, choose **Delegate**, select a type, and describe the task. The subagent appears in that agent's team. Select it to inspect its terminal.
+- Choose **Open folder** to add a project. Click its icon to change its sprite color or set a custom logo. Drag the handle next to a project to reorder it.
+- On a fresh install, open **New agent** and choose **New type** to create your first agent type. Pick its sprite color and optional startup skills. Use the edit button next to a saved type to change it or remove it. Choose additional project skills from `.agents/skills/<name>/SKILL.md`.
+- Each agent row shows its conversation title. Hover over the sprite to see the agent type. Open **⋯** to **Delegate**, **Rename**, or **Delete** the agent. Clearing a custom name restores the conversation title. Deleting an agent asks for confirmation and closes its subagents too.
 - Open **Deliveries** to review Codex results, changed files, and checks. The status bar shows Codex usage and can alert when a quota drops below your chosen threshold.
 - Select **EN** or **ES** in the sidebar to change language. Herdr remembers the choice and shares it with the chat recovery panel.
 

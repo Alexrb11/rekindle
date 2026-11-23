@@ -5,10 +5,25 @@ function terminalType(terminal) {
   return terminal?.labels?.[TYPE_LABEL] ?? terminal?.labels?.["taller.type"];
 }
 
-export function agentName(agent) {
-  if (agent.type || agent.name) return agent.type || agent.name;
-  if (agent.tab_name && !/^\d+$/.test(agent.tab_name)) return agent.tab_name;
-  return agent.program?.name ?? tr("Agente");
+export const AGENT_NAME_LABEL = "rekindle.name";
+
+function conversationTitle(agent, terminal) {
+  const customName = terminal?.labels?.[AGENT_NAME_LABEL]?.trim();
+  if (customName) return customName;
+  const title = (agent.title || terminal?.title || "").trim();
+  const folder = terminal?.cwd?.split(/[\\/]+/).filter(Boolean).at(-1);
+  const { program } = agent;
+  const app = agent.app ?? terminal?.report?.app;
+  const suffix = " | " + folder;
+  const display = (app === "codex" || program?.key === "codex") && folder && title.endsWith(suffix)
+    ? title.slice(0, -suffix.length).trim()
+    : title;
+  const defaults = [agent.address, program?.name, program?.key, app];
+  if (!display || title === folder || /^(?:[~/\\]|[a-z]:[\\/])/i.test(title)
+    || defaults.some(value => value?.toLowerCase() === display.toLowerCase())) {
+    return tr("Conversación sin título");
+  }
+  return display;
 }
 
 function childrenByParent(records) {
@@ -33,6 +48,7 @@ export function projectTeam(listed, terminals, focused) {
     return {
       ...agent,
       parent: terminal?.parent,
+      conversationTitle: conversationTitle(agent, terminal),
       type: terminalType(terminal),
       foldKey: terminalKey(terminal) ?? agent.address
     };
@@ -48,9 +64,8 @@ export function projectTeam(listed, terminals, focused) {
         space: parent.space,
         parent: parent.address,
         type,
-        name: terminal.name || terminal.template,
         program: terminal.program,
-        title: terminal.title,
+        conversationTitle: conversationTitle(terminal, terminal),
         status: error ? "blocked" : terminal.status ?? "idle",
         detail: error ? terminal.first_message?.reason ?? terminal.reason : null,
         seq: terminal.status_ms ?? terminal.created_ms ?? 0,
@@ -65,7 +80,7 @@ export function projectTeam(listed, terminals, focused) {
   }
   for (const agent of team) {
     const parent = byAgent.get(agent.parent);
-    if (parent) agent.parentName = agentName(parent);
+    if (parent) agent.parentName = parent.conversationTitle;
   }
   return team;
 }

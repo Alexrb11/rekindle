@@ -1,4 +1,6 @@
 import { tr } from "./i18n.js";
+import { spriteForType } from "./skill-sprites.js";
+
 const SKILL_PATH = /(?:^|[\\/])SKILL\.md$/i;
 const SKILL_NAME = /^[\p{L}\p{N}][\p{L}\p{N}_.:-]*$/u;
 const CONTROL = /[\x00-\x1f\x7f]/;
@@ -37,13 +39,11 @@ export function normalizeProfile(entry) {
     }
     return skill;
   });
-  return { name, skills: [...new Set(skills)] };
+  return { name, skills: [...new Set(skills)], sprite: spriteForType(entry).id };
 }
 
 export function parseProfiles(source) {
-  if (source === null) {
-    return ["General", "Design", "Review", "Testing"].map(name => ({ name, skills: [] }));
-  }
+  if (source === null) return [];
   const entries = JSON.parse(source.replace(/^\uFEFF/, ""));
   if (!Array.isArray(entries)) throw new Error(tr("rekindle-agent-types.json debe contener una lista de tipos."));
   const types = entries.map(normalizeProfile);

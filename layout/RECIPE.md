@@ -8,14 +8,15 @@ Rekindle is a dark Herdr Desktop workspace for Codex CLI projects on Windows. Th
 
 The layout starts with a 350-point sidebar with a 300-point minimum. The header has the Rekindle name, an English or Spanish control, and a button for a new agent. Filters show all agents, working agents, or agents that need attention. Each project has a logo, a fold control, an agent launcher, and project settings. Its team is a nested tree of parent agents and subagents.
 
-On the right, a 42-point tab bar sits above the active terminal. The optional Files and Changes panels open to the right of the terminal. A 28-point footer shows the machine, branch, active agent counts, Codex quota, and command palette. The theme uses a near-black canvas, dark gray panels, and indigo accents. The bundled sprite sheets include indigo, mint, sky, coral, gold, and violet variants for agents and projects.
+On the right, a 42-point tab bar sits above the active terminal. The optional Files and Changes panels open to the right of the terminal. A 28-point footer shows the machine, branch, active agent counts, Codex quota, and command palette. The theme uses a near-black canvas, dark gray panels, and indigo accents. Agent types have twelve sprite colors to choose from and projects have six.
 
 ## How it behaves
 
-- A project opens from a folder. Click its icon to recolor the project sprite or apply a PNG, JPG, WebP, or SVG logo. Expand a project's team or a parent row to see the tree.
+- A project opens from a folder. Click its icon to recolor the project sprite or apply a PNG, JPG, WebP, or SVG logo. Drag the project's handle to reorder it within its machine. Expand a project's team or a parent row to see the tree.
 - Working sprites move through their work frames. Blocked sprites show an attention marker and the current request. Finished sprites show completion and idle sprites blink. A single sidebar timer redraws only when the frame changes.
-- The agent picker starts with General, Design, Review, and Testing. Add or edit a type to specify startup skills in order. The picker scans the project for `.agents/skills/<name>/SKILL.md` and merges selected project skills with the type's skills at launch. Each skill can have its own sprite color.
-- **Delegate** opens the picker for a living parent terminal. Choose the type and enter a task. The picker starts a child terminal via `hc` with the parent address and the type label. The child appears beneath its parent. Focus or peek into its terminal from the team.
+- The agent picker starts with an empty list on a fresh install. Choose **New type** to create the first type and set its sprite color and optional startup skills. The picker scans the project for `.agents/skills/<name>/SKILL.md` and merges selected project skills with the type's skills at launch.
+- Each agent row shows its conversation title. Hover over the sprite for its type. In the **⋯** menu, **Rename** saves a custom name in Herdr and an empty name restores the conversation title. **Delete** asks for confirmation before closing the terminal and its descendants.
+- **Delegate** in the same menu opens the picker for an active agent. Choose the type and enter a task. The picker starts a child terminal via `hc` with the parent address and the type label. The child appears beneath its parent. Select its row to inspect its terminal.
 - **Deliveries** displays local Codex results, changed files, and checks. Open the diff or mark a delivery reviewed. The footer can refresh quota and configure a low-quota notification.
 - The language control writes `rekindle.language` to shared state. It also selects the language of the optional chat recovery panel. The optional keyboard binding in `keys.json` moves to the next agent that needs attention.
 
@@ -25,7 +26,7 @@ On the right, a 42-point tab bar sits above the active terminal. The optional Fi
 - `themes/rekindle.json` supplies the terminal palette and UI colors. `mods/rekindle-sidebar/art` holds the original project art and agent sprite frames.
 - `rekindle-sidebar` renders projects, agent state, requests, and team relationships. It also opens the project settings and logo dialogs. `rekindle-agents` renders the picker, type editor, project skill chooser, and delegation form. `rekindle-tabs` provides navigation and toggles for the right-hand panels.
 - `rekindle-status` and `rekindle-deliveries` share status and review records. On Windows, their PowerShell helpers read Codex session logs and the local session index, launch Codex's app server to get quota, and run Git to render changed files. Authoring actions use Herdr's `exec`, `hc`, and file APIs. Project skill discovery reads files beneath the project.
-- Herdr keeps user settings, logos, review state, and agent types in its application home. The type editor saves to `data/rekindle-agent-types.json`. The built-in types are available on the first launch.
+- Herdr keeps user settings, logos, review state, and agent types in its application home. The type editor saves to `data/rekindle-agent-types.json`.
 
 ## Watch out
 

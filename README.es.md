@@ -37,9 +37,9 @@ Usa `-Component Layout` para instalar el layout, la paleta, los sprites y los pa
 
 ## Usar Rekindle
 
-- Pulsa **Abrir carpeta** para añadir un proyecto. Pulsa su icono para elegir un color de sprite o un logo propio. Despliega el equipo para ver a sus agentes y subagentes.
-- En **Nuevo agente**, elige su tipo o crea uno con **Nuevo tipo**. Configura las skills de inicio por nombre o ruta al archivo `SKILL.md`. También puedes elegir las del proyecto en `.agents/skills/<nombre>/SKILL.md`.
-- Pulsa **Delegar** en un agente activo, elige un tipo y describe la tarea. El subagente aparece en el equipo de ese agente. Selecciónalo para consultar su terminal.
+- Pulsa **Abrir carpeta** para añadir un proyecto. Pulsa su icono para elegir un color de sprite o un logo propio. Arrastra el tirador junto al proyecto para reordenarlo.
+- Tras una instalación nueva, abre **Nuevo agente** y pulsa **Nuevo tipo** para crear el primero. Elige su color de sprite y las skills de inicio que quieras. Pulsa el botón de edición junto a un tipo guardado para cambiarlo o eliminarlo. También puedes elegir skills del proyecto en `.agents/skills/<nombre>/SKILL.md`.
+- Cada agente muestra el título de su conversación. Pasa el cursor sobre el sprite para ver el tipo. Abre **⋯** para **Delegar**, **Cambiar nombre** o **Eliminar**. Si borras el nombre personalizado, vuelve a aparecer el título de la conversación. Al eliminar un agente, Herdr pide confirmación y cierra también sus subagentes.
 - Abre **Entregas** para revisar resultados de Codex, archivos modificados y pruebas. La barra de estado muestra el uso de Codex y permite configurar un aviso de cuota baja.
 - Pulsa **EN** o **ES** en la barra lateral para cambiar el idioma. Herdr recuerda el ajuste y lo aplica al panel de recuperación.
 
