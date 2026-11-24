@@ -1,15 +1,48 @@
+import { focused, run, setShared, shared, terminals } from "herdr";
 import { tr } from "./i18n.js";
+
 const TYPE_LABEL = "rekindle.type";
+const AGENT_LAST_USED = "rekindle.agent-last-used";
+export const AGENT_NAME_LABEL = "rekindle.name";
 
 function terminalType(terminal) {
   return terminal?.labels?.[TYPE_LABEL] ?? terminal?.labels?.["taller.type"];
 }
 
-export const AGENT_NAME_LABEL = "rekindle.name";
+export function agentUseHistory() {
+  return shared(AGENT_LAST_USED)?.byTerminal ?? {};
+}
 
-function conversationTitle(agent, terminal) {
-  const customName = terminal?.labels?.[AGENT_NAME_LABEL]?.trim();
-  if (customName) return customName;
+export function rememberAgentUse(key) {
+  const history = shared(AGENT_LAST_USED) ?? {};
+  const usedAt = Math.max(Date.now(), (history.usedAt ?? 0) + 1);
+  setShared(AGENT_LAST_USED, { usedAt, byTerminal: { ...history.byTerminal, [key]: usedAt } });
+}
+
+export function openAgent(agent) {
+  const current = focused();
+  // A regular focus change is recorded by the sidebar. Peeks and repeated
+  // opens of the current agent also count, even when focus does not change.
+  if (agent.detached || agent.address === (current?.terminal ?? current?.agent)) rememberAgentUse(agent.foldKey);
+  run(agent.detached ? "terminal.peek" : "agent.focus", { terminal: agent.address });
+}
+
+export function liveAgentTerminal(target) {
+  if (!target) return null;
+  return terminals().find(terminal => terminal.address === target.address
+    && terminal.created_ms === target.created_ms && terminal.state === "live");
+}
+
+export function projectNames(projects) {
+  const names = new Map(projects.map(space => [space.id, space.name]));
+  const homeSpaces = projects.filter(space => space.name === "~").sort((a, b) => a.id.localeCompare(b.id));
+  homeSpaces.forEach((space, index) => {
+    names.set(space.id, homeSpaces.length === 1 ? tr("Inicio") : tr("Inicio ") + (index + 1));
+  });
+  return names;
+}
+
+function conversationTitles(agent, terminal) {
   const title = (agent.title || terminal?.title || "").trim();
   const folder = terminal?.cwd?.split(/[\\/]+/).filter(Boolean).at(-1);
   const { program } = agent;
@@ -18,12 +51,12 @@ function conversationTitle(agent, terminal) {
   const display = (app === "codex" || program?.key === "codex") && folder && title.endsWith(suffix)
     ? title.slice(0, -suffix.length).trim()
     : title;
+  const normalized = display.toLowerCase();
   const defaults = [agent.address, program?.name, program?.key, app];
-  if (!display || title === folder || /^(?:[~/\\]|[a-z]:[\\/])/i.test(title)
-    || defaults.some(value => value?.toLowerCase() === display.toLowerCase())) {
-    return tr("Conversación sin título");
-  }
-  return display;
+  const isDefault = !display || title === folder || /^(?:[~/\\]|[a-z]:[\\/])/i.test(title)
+    || defaults.some(value => value?.toLowerCase() === normalized);
+  const originalTitle = isDefault ? tr("Conversación sin título") : display;
+  return { originalTitle, conversationTitle: terminal?.labels?.[AGENT_NAME_LABEL]?.trim() || originalTitle };
 }
 
 function childrenByParent(records) {
@@ -40,15 +73,17 @@ function terminalKey(terminal) {
   return terminal?.created_ms == null ? terminal?.address : terminal.address + ":" + terminal.created_ms;
 }
 
-export function projectTeam(listed, terminals, focused) {
-  const byAddress = new Map(terminals.map(terminal => [terminal.address, terminal]));
-  const children = childrenByParent(terminals.filter(terminal => terminal.state === "live"));
+export function projectTeam(listed, liveTerminals, focusedAddress) {
+  const byAddress = new Map(liveTerminals.map(terminal => [terminal.address, terminal]));
+  const children = childrenByParent(liveTerminals.filter(terminal => terminal.state === "live"));
   const team = listed.map(agent => {
     const terminal = byAddress.get(agent.address);
     return {
       ...agent,
+      terminal,
       parent: terminal?.parent,
-      conversationTitle: conversationTitle(agent, terminal),
+      createdAt: terminal?.created_ms ?? 0,
+      ...conversationTitles(agent, terminal),
       type: terminalType(terminal),
       foldKey: terminalKey(terminal) ?? agent.address
     };
@@ -61,17 +96,19 @@ export function projectTeam(listed, terminals, focused) {
       const error = terminal.first_message?.sent === false || terminal.status === "error";
       const child = {
         address: terminal.address,
+        terminal,
         space: parent.space,
         parent: parent.address,
+        createdAt: terminal.created_ms ?? 0,
         type,
         program: terminal.program,
-        conversationTitle: conversationTitle(terminal, terminal),
+        ...conversationTitles(terminal, terminal),
         status: error ? "blocked" : terminal.status ?? "idle",
         detail: error ? terminal.first_message?.reason ?? terminal.reason : null,
         seq: terminal.status_ms ?? terminal.created_ms ?? 0,
         pinned: Boolean(terminal.labels?.["herdr.pinned"]),
         foldKey: terminalKey(terminal),
-        focused: terminal.address === focused,
+        focused: terminal.address === focusedAddress,
         detached: true
       };
       byAgent.set(child.address, child);
@@ -86,17 +123,35 @@ export function projectTeam(listed, terminals, focused) {
 }
 
 export function agentCounts(agents) {
-  return {
-    total: agents.length,
-    working: agents.filter(agent => agent.status === "working").length,
-    blocked: agents.filter(agent => agent.status === "blocked").length
-  };
+  let working = 0;
+  let blocked = 0;
+  for (const agent of agents) {
+    if (agent.status === "working") working++;
+    if (agent.status === "blocked") blocked++;
+  }
+  return { total: agents.length, working, blocked };
 }
 
-// Sort and filter the input first so a child can still appear when its parent is outside the filter.
-export function orderProjectTeam(agents, foldedTeams = new Set()) {
-  const children = childrenByParent(agents);
-  const present = new Set(agents.map(agent => agent.address));
+function sortByRecentUse(agents, projectAgents, history) {
+  const byAddress = new Map(projectAgents.map(agent => [agent.address, agent]));
+  const activity = new Map();
+  for (const agent of projectAgents) {
+    const usedAt = Math.max(agent.createdAt, history[agent.foldKey] ?? 0);
+    // A team's position reflects its newest member's activity.
+    for (let member = agent; member && usedAt > (activity.get(member.address) ?? -1); member = byAddress.get(member.parent)) {
+      activity.set(member.address, usedAt);
+    }
+  }
+  agents.sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
+    || activity.get(b.address) - activity.get(a.address) || b.createdAt - a.createdAt || b.seq - a.seq);
+}
+
+export function orderProjectTeam(agents, filter, foldedTeams, history) {
+  // Filter before building the hierarchy so matching children stay visible.
+  const visible = filter === "all" ? [...agents] : agents.filter(agent => agent.status === filter);
+  if (visible.length > 1) sortByRecentUse(visible, agents, history);
+  const children = childrenByParent(visible);
+  const present = new Set(visible.map(agent => agent.address));
   const seen = new Set();
   const ordered = [];
   function visit(agent, depth, hidden = false) {
@@ -114,10 +169,10 @@ export function orderProjectTeam(agents, foldedTeams = new Set()) {
     }
     return descendants;
   }
-  for (const agent of agents) {
+  for (const agent of visible) {
     if (!present.has(agent.parent)) visit(agent, 0);
   }
-  for (const agent of agents) visit(agent, 0);
+  for (const agent of visible) visit(agent, 0);
   return ordered;
 }
 

@@ -1,25 +1,38 @@
 import { language, LANGUAGE_KEY, tr } from "./i18n.js";
 import { View, div, image, svg } from "gpui-kit";
 import { Button, Popover, h_flex, v_flex } from "gpui-base";
-import { agents, appHome, checking, closeOverlay, focused, layout, nextCommand, notify, spaces, terminals, theme, window, run, openOverlay, pickFolder, readTextFile, watchFolder, shared, setShared, setAgentOrder, props } from "herdr";
+import {
+  agents, appHome, checking, closeOverlay, focused, layout, nextCommand, notify, openOverlay,
+  pickFolder, props, readTextFile, run, setAgentOrder, setShared, shared, spaces, terminals, theme, watchFolder, window
+} from "herdr";
 import { AttentionRequests } from "./attention-requests.js";
-import { AgentNameEditor, liveAgentTerminal } from "./agent-name-editor.js";
+import { AgentNameEditor } from "./agent-name-editor.js";
 import { ErrorDialog } from "./error-dialog.js";
-import { runChecked, showError } from "./errors.js";
+import { coreJson, runChecked, showError } from "./errors.js";
 import { ProjectEditor } from "./project-editor.js";
 import { DEFAULT_PROJECT_SPRITE, ProjectLogoEditor, projectLogo, projectSprite } from "./project-logos.js";
-import { agentCounts, nextPendingAgent, orderProjectTeam, projectTeam } from "./project-team.js";
+import {
+  agentCounts, agentUseHistory, liveAgentTerminal, nextPendingAgent, openAgent, orderProjectTeam,
+  projectNames, projectTeam, rememberAgentUse
+} from "./project-team.js";
 import { spriteForType, spriteTile } from "./skill-sprites.js";
+import { WorkspaceSearch } from "./workspace-search.js";
 
 const SPRITE_SIZE = 28;
+const AGENTS_PER_PAGE = 4;
 const FOLDS = "rekindle.sidebar-folds";
 const CODEX_USAGE = "rekindle.codex-usage";
 const REVIEWS = "rekindle.reviews";
+const STOP_TASK_FEEDBACK = {
+  stopped: { title: "Tarea detenida", level: "success" },
+  still_working: { title: "El agente sigue trabajando", level: "warning" },
+  exited: { title: "El agente se cerró", level: "warning" }
+};
 const STATES = {
-  blocked: { text: "Te necesita", order: 0, spriteRow: 2, frameEnds: [520, 710, 1030, 1240] },
-  done: { text: "Terminado", order: 1, spriteRow: 3, frameEnds: [1050, 1220, 1530, 1810] },
-  working: { text: "En curso", order: 2, spriteRow: 1, frameEnds: [160, 310, 470, 620] },
-  idle: { text: "En espera", order: 3, spriteRow: 0, frameEnds: [1500, 1760, 1880, 2230] }
+  blocked: { text: "Te necesita", spriteRow: 2, frameEnds: [520, 710, 1030, 1240] },
+  done: { text: "Terminado", spriteRow: 3, frameEnds: [1050, 1220, 1530, 1810] },
+  working: { text: "En curso", spriteRow: 1, frameEnds: [160, 310, 470, 620] },
+  idle: { text: "En espera", spriteRow: 0, frameEnds: [1500, 1760, 1880, 2230] }
 };
 
 function spriteFrame(status, timestamp) {
@@ -107,10 +120,20 @@ function confirmAgentRemoval(terminal, name) {
   });
 }
 
-function agentOptions(agent, terminal, name, t, actions) {
-  const key = agent.foldKey;
+function hasActiveTask(status) {
+  return status === "working" || status === "blocked";
+}
+
+function canStopTask(terminal) {
+  return terminal?.state === "live" && hasActiveTask(terminal.status);
+}
+
+function agentOptions(agent, t, actions) {
+  const { terminal, foldKey: key, conversationTitle: name } = agent;
   const open = actions.agentMenuKey === key;
   const label = tr("Opciones de ") + name;
+  const stopping = actions.stoppingTasks.has(key);
+  const stopLabel = stopping ? tr("Deteniendo…") : tr("Detener la tarea actual");
   const choose = action => (_event, cx) => {
     cx.stop_propagation();
     actions.setAgentMenu(key, false, cx);
@@ -121,16 +144,19 @@ function agentOptions(agent, terminal, name, t, actions) {
     .trigger(button("opciones-agente-" + agent.address, t)
       .size(24).px(0).text_size(16).accessibility_label(label).tooltip(label)
       .when(open, el => el.bg(t.hover).text_color(t.foreground)).child("⋯"))
-    .content(v_flex().w(150).p(4).gap(2).rounded(6).border(1).border_color(t.border).bg(t.popover)
-      .child(button("delegar-" + agent.address, t, choose(cx => actions.delegate(agent, terminal, cx)))
+    .content(v_flex().w(184).p(4).gap(2).rounded(6).border(1).border_color(t.border).bg(t.popover)
+      .child(button("delegar-" + agent.address, t, choose(cx => actions.delegate(agent, cx)))
         .w_full().justify_start().text_color(t.foreground).child(icon("git-branch", 13)).child(tr("Delegar")))
       .child(button("renombrar-agente-" + agent.address, t, choose(() => openAgentNameEditor(terminal, name)))
         .w_full().justify_start().text_color(t.foreground).child(icon("square-pen", 13)).child(tr("Cambiar nombre")))
+      .child(button("detener-tarea-" + agent.address, t, choose(cx => actions.stopTask(agent, cx)),
+        { enabled: !stopping && canStopTask(terminal) }).w_full().justify_start()
+        .child(icon("square", 13)).child(stopLabel))
       .child(button("eliminar-agente-" + agent.address, t, choose(() => confirmAgentRemoval(terminal, name)))
         .w_full().justify_start().text_color(t.ansi1).child(icon("x", 13)).child(tr("Eliminar"))));
 }
 
-function agentRow({ agent, depth, folded, descendants, terminal, usage, type, sprite }, t, spriteFrames, actions) {
+function agentRow({ agent, depth, folded, descendants, usage, type, sprite }, t, spriteFrames, actions) {
   const status = STATES[agent.status] ?? STATES.idle;
   const frame = spriteFrames.get(status) ?? 0;
   const statusColor = agent.status === "blocked" || agent.status === "done" ? t[agent.status] : t.muted;
@@ -146,7 +172,7 @@ function agentRow({ agent, depth, folded, descendants, terminal, usage, type, sp
   const summary = h_flex().id("abrir-agente-" + agent.address).flex_1().min_w(0).h_full().items_center().gap(6)
     .cursor_pointer()
     .accessibility_label([name, parent, statusText].filter(Boolean).join(", "))
-    .on_click(() => run(agent.detached ? "terminal.peek" : "agent.focus", { terminal: agent.address }))
+    .on_click(() => openAgent(agent))
     .when(descendants.total > 0, el => el.child(foldButton("plegar-equipo-" + agent.address, tr("equipo de ") + name, folded, t,
       cx => actions.toggle("teams", agent.foldKey, cx))))
     .child(spriteTile(sprite, SPRITE_SIZE, frame, status.spriteRow)
@@ -163,12 +189,12 @@ function agentRow({ agent, depth, folded, descendants, terminal, usage, type, sp
     .border_l(2).border_color(agent.focused ? t.accent : t.chrome)
     .when(agent.focused, el => el.bg(t.surface)).hover(el => el.bg(t.hover))
     .child(summary)
-    .when(terminal?.state === "live", el => el
+    .when(agent.terminal?.state === "live", el => el
       .child(rowButton("fijar-" + agent.address, (agent.pinned ? tr("Desfijar ") : tr("Fijar ")) + name, t,
         () => run("terminal.pin", { terminal: agent.address, pinned: !agent.pinned }))
         .w(20).px(0).text_color(agent.pinned ? t.accent : t.muted)
         .child(icon(agent.pinned ? "pin-off" : "pin", 12)))
-      .child(agentOptions(agent, terminal, name, t, actions)));
+      .child(agentOptions(agent, t, actions)));
 }
 
 function projectLogoTile(space, name, t) {
@@ -199,11 +225,12 @@ function projectGrip(space, name, t, dragging, startDrag) {
     .children(Array.from({ length: 3 }, () => h_flex().gap(2).child(dot()).child(dot())));
 }
 
-function projectSection({ space, name, counts, rows, folded, usage, reorder }, t, spriteFrames, actions) {
+function projectSection({ space, name, counts, rows, hasMore, folded, usage, reorder }, t, spriteFrames, actions) {
+  const id = space?.id ?? "sin-proyecto";
   const context = [space?.machine, space?.branch].filter(Boolean).join(" · ");
   const activity = folded && counts.total ? workSummary(counts) || counts.total + (counts.total === 1 ? tr(" agente") : tr(" agentes")) : "";
   const projectUsage = space?.name === "~" ? null : usage;
-  const title = v_flex().id("proyecto-" + (space?.id ?? "sin-proyecto")).flex_1().min_w(0)
+  const title = v_flex().id("proyecto-" + id).flex_1().min_w(0)
     .when(Boolean(space), el => el.cursor_pointer()
       .tooltip([name, space.folder, context, usage?.detail].filter(Boolean).join("\n"))
       .on_click(() => run("space.select", { id: space.id }))
@@ -220,13 +247,13 @@ function projectSection({ space, name, counts, rows, folded, usage, reorder }, t
       .when(Boolean(projectUsage), line => line.child(div().id("tokens-proyecto-" + space?.id)
         .text_size(10.5).text_color(t.muted).truncate().tooltip(projectUsage.detail).child(projectUsage.label)))));
 
-  return v_flex().id("equipo-proyecto-" + (space?.id ?? "sin-proyecto")).relative()
+  return v_flex().id("equipo-proyecto-" + id).relative()
     .flex_none().min_w(0).py(4).gap(2).border_t(1).border_color(t.border)
     .when(reorder.dragging, el => el.opacity(0.55))
     .on_mouse_move((_event, cx) => actions.hoverProject(space, cx))
     .on_mouse_up("left", (_event, cx) => actions.dropProject(space, cx))
     .child(h_flex().min_h(30).items_center().gap(5)
-      .child(counts.total ? foldButton("plegar-proyecto-" + (space?.id ?? "sin-proyecto"), name, folded, t,
+      .child(counts.total ? foldButton("plegar-proyecto-" + id, name, folded, t,
         cx => actions.toggle("projects", space?.id ?? null, cx)) : div().w(20).flex_none())
       .child(projectLogoTile(space, name, t)).child(title)
       .when(reorder.movable, el => el.child(projectGrip(space, name, t, reorder.dragging, actions.startDrag)))
@@ -236,11 +263,14 @@ function projectSection({ space, name, counts, rows, folded, usage, reorder }, t
           openOverlay({ mod: "rekindle-sidebar", kind: "popup", width: 205, height: 73, at: "pointer", props: { projectMenu: space.id } }))
           .w(24).px(0).child(icon("settings", 13)))))
     .when(rows.length > 0, el => el.child(v_flex().min_w(0).gap(2).children(rows.map(row => {
-        const summary = agentRow(row, t, spriteFrames, actions);
-        if (!row.request) return summary;
-        return v_flex().flex_none().min_w(0).gap(4).child(summary)
-          .child(row.request.ml(22 + Math.min(row.depth, 3) * 9).mr(3));
-      }))))
+      const summary = agentRow(row, t, spriteFrames, actions);
+      if (!row.request) return summary;
+      return v_flex().flex_none().min_w(0).gap(4).child(summary)
+        .child(row.request.ml(22 + Math.min(row.depth, 3) * 9).mr(3));
+    }))))
+    .when(hasMore, el => el.child(rowButton("ver-mas-agentes-" + id,
+      tr("Ver más agentes en ") + name, t, cx => actions.showMore(space?.id ?? null, cx))
+      .self_start().ml(22).justify_start().child(icon("chevron-down", 12)).child(tr("Ver más"))))
     .when(reorder.edge, el => el.child(div().absolute().left(0).right(0).h(2).bg(t.accent)
       .when(reorder.edge === "top", line => line.top(0))
       .when(reorder.edge === "bottom", line => line.bottom(0))));
@@ -248,7 +278,9 @@ function projectSection({ space, name, counts, rows, folded, usage, reorder }, t
 
 export default class Rekindle extends View {
   init(_props, cx) {
-    const { rekindleError, editProject, logoProject, renameAgent, projectMenu: projectMenuId, overlay } = props() ?? {};
+    const {
+      rekindleError, editProject, logoProject, renameAgent, searchWorkspace, projectMenu: projectMenuId, overlay
+    } = props() ?? {};
     if (typeof projectMenuId === "string") {
       this.projectMenuId = projectMenuId;
       this.overlay = overlay;
@@ -270,8 +302,14 @@ export default class Rekindle extends View {
       this.agentNameEditor = new AgentNameEditor(renameAgent, overlay, cx);
       return;
     }
+    if (searchWorkspace) {
+      this.workspaceSearch = new WorkspaceSearch(overlay, cx);
+      return;
+    }
     this.filter = "all";
+    this.projectLimits = new Map();
     this.agentMenuKey = null;
+    this.stoppingTasks = new Set();
     this.projectDrag = null;
     this.spriteFrames = new Map();
     this.spritesByType = new Map();
@@ -352,6 +390,28 @@ export default class Rekindle extends View {
     cx.notify();
   }
 
+  stopTask(agent, cx) {
+    const { terminal, foldKey: key } = agent;
+    if (this.stoppingTasks.has(key) || !canStopTask(liveAgentTerminal(terminal))) return;
+    this.stoppingTasks.add(key);
+    cx.notify();
+    cx.spawn(async cx => {
+      try {
+        const current = await coreJson(["get", "--json", terminal.address]);
+        if (current.created_ms !== terminal.created_ms || current.state !== "live" || !hasActiveTask(current.status?.state)) return;
+        if (terminal.turn != null && current.turn !== terminal.turn) return;
+        const { outcome } = await coreJson(["interrupt", "--json", terminal.address]);
+        const { title, level } = STOP_TASK_FEEDBACK[outcome] ?? { title: "Interrupción enviada", level: "info" };
+        notify({ title: tr(title), level, body: agent.conversationTitle });
+      } catch (error) {
+        showError(tr("No se pudo detener la tarea"), tr("Vuelve a intentarlo desde el menú del agente."), error);
+      } finally {
+        this.stoppingTasks.delete(key);
+        cx.notify();
+      }
+    });
+  }
+
   revealAgent(agent, team, filter, cx) {
     this.filter = filter;
     const byAddress = new Map(team.map(member => [member.address, member]));
@@ -369,6 +429,24 @@ export default class Rekindle extends View {
     cx.notify();
   }
 
+  trackAgentUse(agent, cx) {
+    const key = agent?.foldKey;
+    const turn = agent?.terminal?.turn;
+    const working = agent?.status === "working";
+    const previous = this.lastFocus;
+    if (previous?.key === key && previous?.turn === turn && previous?.working === working) return;
+    const observation = { key, turn, working };
+    this.lastFocus = observation;
+    const changedAgent = previous?.key !== key;
+    const startedWork = working && (!previous?.working || previous.turn !== turn);
+    if (key && (changedAgent || startedWork)) {
+      this.lastUse = observation;
+      cx.spawn(async () => {
+        if (this.lastUse === observation) rememberAgentUse(key);
+      });
+    }
+  }
+
   nextPending(cx) {
     const here = focused();
     const address = here?.terminal ?? here?.agent;
@@ -381,7 +459,7 @@ export default class Rekindle extends View {
       return;
     }
     this.revealAgent(pending, team, "blocked", cx);
-    run(pending.detached ? "terminal.peek" : "agent.focus", { terminal: pending.address });
+    openAgent(pending);
   }
 
   hoverProject(space, cx) {
@@ -414,22 +492,28 @@ export default class Rekindle extends View {
     if (this.projectEditor) return this.projectEditor.render();
     if (this.logoEditor) return this.logoEditor.render();
     if (this.agentNameEditor) return this.agentNameEditor.render();
+    if (this.workspaceSearch) return this.workspaceSearch.render();
     const t = theme();
     const projects = spaces();
-    // Keep numbered Home labels attached to their projects as the list moves.
-    const homeSpaces = projects.filter(space => space.name === "~").sort((a, b) => a.id.localeCompare(b.id));
-    const homeNames = new Map(homeSpaces.map((space, index) =>
-      [space.id, homeSpaces.length > 1 ? tr("Inicio ") + (index + 1) : tr("Inicio")]));
+    const names = projectNames(projects);
     const here = focused();
+    const address = here?.terminal ?? here?.agent;
     const liveTerminals = terminals();
-    const byAddress = new Map(liveTerminals.map(terminal => [terminal.address, terminal]));
-    const team = projectTeam(agents(), liveTerminals, here?.terminal ?? here?.agent);
+    const team = projectTeam(agents(), liveTerminals, address);
+    this.trackAgentUse(team.find(agent => agent.address === address), cx);
+    const useHistory = agentUseHistory();
     const { total, working, blocked } = agentCounts(team);
     const folds = shared(FOLDS) ?? {};
     const usage = shared(CODEX_USAGE);
+    const foldedProjects = new Set(folds.projects ?? []);
     const foldedTeams = new Set(folds.teams ?? []);
     const actions = {
       toggle: (key, id, cx) => this.toggleFold(key, id, cx),
+      showMore: (id, cx) => {
+        const limit = this.projectLimits.get(id) ?? AGENTS_PER_PAGE;
+        this.projectLimits.set(id, limit + AGENTS_PER_PAGE);
+        cx.notify();
+      },
       startDrag: (space, cx) => {
         this.projectDrag = { source: space, target: null };
         cx.notify();
@@ -437,16 +521,18 @@ export default class Rekindle extends View {
       hoverProject: (space, cx) => this.hoverProject(space, cx),
       dropProject: (space, cx) => this.dropProject(space, cx),
       agentMenuKey: this.agentMenuKey,
+      stoppingTasks: this.stoppingTasks,
+      stopTask: (agent, cx) => this.stopTask(agent, cx),
       setAgentMenu: (key, open, cx) => {
         if (open === (this.agentMenuKey === key)) return;
         this.agentMenuKey = open ? key : null;
         cx.notify();
       },
-      delegate: (agent, terminal, cx) => {
+      delegate: (agent, cx) => {
         this.revealAgent(agent, team, "all", cx);
         launcher(projects.find(space => space.id === agent.space), false, {
           parent: agent.address, parentName: agent.conversationTitle, parentType: agent.type ?? agent.tab_name,
-          parentCreated: terminal.created_ms ?? null
+          parentCreated: agent.terminal.created_ms ?? null
         });
       }
     };
@@ -457,42 +543,49 @@ export default class Rekindle extends View {
     }
     if (unassigned.agents.length) grouped.set(null, unassigned);
     const shown = [];
+    const navigable = new Set();
+    const spriteStates = new Set();
     const visibleProjectsByMachine = new Map();
     for (const project of grouped.values()) {
-      const list = project.agents.filter(agent => this.filter === "all" || agent.status === this.filter);
-      if (this.filter !== "all" && !list.length) continue;
-      list.sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
-        || (STATES[a.status]?.order ?? 3) - (STATES[b.status]?.order ?? 3) || b.seq - a.seq);
-      const folded = Boolean(folds.projects?.includes(project.space?.id ?? null));
-      const rows = folded ? [] : orderProjectTeam(list, foldedTeams).map(row => {
-        const terminal = byAddress.get(row.agent.address);
-        const typeName = row.agent.type ?? row.agent.tab_name;
+      const counts = agentCounts(project.agents);
+      if (this.filter !== "all" && counts[this.filter] === 0) continue;
+      const space = project.space;
+      const id = space?.id ?? null;
+      const limit = this.projectLimits.get(id) ?? AGENTS_PER_PAGE;
+      const folded = foldedProjects.has(id);
+      const orderedRows = folded ? [] : orderProjectTeam(project.agents, this.filter, foldedTeams, useHistory);
+      for (const row of orderedRows) navigable.add(row.agent.address);
+      const rows = orderedRows.slice(0, limit).map(row => {
+        const { agent } = row;
+        const { terminal } = agent;
+        const typeName = agent.type ?? agent.tab_name;
         const typeSprite = this.spritesByType.get(typeName?.trim().toLowerCase());
-        const chat = usage?.chats?.[row.agent.address];
-        const isCodex = row.agent.app === "codex" || row.agent.program?.key === "codex";
-        const chatUsage = chat && chat.process === (terminal?.pid ?? null) ? chat : isCodex && !row.agent.address.includes("/")
+        const chat = usage?.chats?.[agent.address];
+        const isCodex = agent.app === "codex" || agent.program?.key === "codex";
+        const chatUsage = chat && chat.process === (terminal?.pid ?? null) ? chat : isCodex && !agent.address.includes("/")
           ? { label: "Tokens —", detail: tr("Todavía no hay un contador vinculado a este chat de Codex.") } : null;
+        spriteStates.add(STATES[agent.status] ?? STATES.idle);
         return {
-          ...row, terminal, usage: chatUsage,
-          type: row.agent.type ?? (typeSprite ? typeName : null),
+          ...row, usage: chatUsage,
+          type: agent.type ?? (typeSprite ? typeName : null),
           sprite: typeSprite ?? spriteForType(),
-          request: row.agent.status === "blocked" ? this.attention.card(row.agent, terminal, t) : null
+          request: agent.status === "blocked" ? this.attention.card(agent, terminal, t) : null
         };
       });
-      const space = project.space;
       if (space) visibleProjectsByMachine.set(space.machine, (visibleProjectsByMachine.get(space.machine) ?? 0) + 1);
-      shown.push({ space, name: homeNames.get(space?.id) ?? (space?.name || tr("Sin proyecto")),
-        counts: agentCounts(project.agents), rows, folded, usage: usage?.projects?.[space?.id] });
+      shown.push({
+        space, name: names.get(id) || tr("Sin proyecto"), counts, rows, folded,
+        hasMore: orderedRows.length > limit, usage: usage?.projects?.[space?.id]
+      });
     }
     const drag = this.projectDrag;
     const sourceIndex = drag ? projects.findIndex(space => space.id === drag.source.id) : -1;
     const targetIndex = drag?.target ? projects.findIndex(space => space.id === drag.target) : -1;
     const dropEdge = sourceIndex >= 0 && targetIndex >= 0 ? (sourceIndex < targetIndex ? "bottom" : "top") : null;
-    const visible = shown.flatMap(project => project.rows.map(row => row.agent));
     const now = Date.now();
-    const spriteStates = new Set(visible.map(agent => STATES[agent.status] ?? STATES.idle));
     this.spriteFrames = new Map([...spriteStates].map(status => [status, spriteFrame(status, now)]));
-    setAgentOrder(visible.map(agent => agent.address));
+    // Keep Next and Previous in pane order and include agents on later pages.
+    setAgentOrder(team.filter(agent => navigable.has(agent.address)).map(agent => agent.address));
 
     const filters = [
       ["all", tr("Todos"), total],
@@ -519,6 +612,7 @@ export default class Rekindle extends View {
     const locale = language();
     const nextLocale = locale === "en" ? "es" : "en";
     const languageLabel = locale === "en" ? "Cambiar a español" : "Switch to English";
+    const searchLabel = tr("Buscar conversaciones y proyectos");
     return v_flex().id("rekindle-sidebar").size_full().min_h(0).bg(t.chrome).text_color(t.foreground)
       .child(v_flex().flex_none().px(12).pt(window()?.platform === "macos" ? 35 : 12).gap(7)
         .child(h_flex().justify_between().items_center().gap(6)
@@ -526,6 +620,9 @@ export default class Rekindle extends View {
           .child(div().flex_1())
           .child(button("rekindle-language", t, () => setShared(LANGUAGE_KEY, nextLocale))
             .tooltip(languageLabel).accessibility_label(languageLabel).child(locale.toUpperCase()))
+          .child(button("abrir-busqueda", t, () =>
+            openOverlay({ mod: "rekindle-sidebar", kind: "dialog", width: 480, height: 430, props: { searchWorkspace: true } }))
+            .w(28).px(0).tooltip(searchLabel).accessibility_label(searchLabel).child(icon("search", 15)))
           .child(button("nuevo-agente", t, () => launcher(projects.find(space => space.active)))
             .border(1).border_color(t.border).text_color(t.foreground).px(8)
             .child(icon("plus", 13)).child(tr("Nuevo agente"))))

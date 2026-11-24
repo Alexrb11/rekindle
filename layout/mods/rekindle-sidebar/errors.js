@@ -1,5 +1,20 @@
 import { tr } from "./i18n.js";
-import { exec, notify, openOverlay } from "herdr";
+import { exec, hc, notify, openOverlay } from "herdr";
+
+function commandError(output, fallback) {
+  try {
+    const error = JSON.parse(output)?.error;
+    if (typeof error === "string") return new Error(error || fallback);
+    if (error?.message) return new Error(error.message);
+  } catch {}
+  return new Error(output || fallback);
+}
+
+export async function coreJson(args) {
+  const result = await hc(args);
+  if (result.code === 0) return JSON.parse(result.stdout);
+  throw commandError(result.stderr.trim() || result.stdout.trim(), tr("Herdr Core devolvió el código ") + result.code + ".");
+}
 
 export function showError(title, message, error) {
   const detail = error == null ? "" : String(error.message ?? error).trim().slice(0, 1600);
@@ -17,8 +32,5 @@ export function showError(title, message, error) {
 export async function runChecked(command, args) {
   const result = await exec("herdr-app", ["do", command, JSON.stringify(args)]);
   if (result.code === 0) return;
-  const output = result.stdout.trim() || result.stderr.trim();
-  let message = output;
-  try { message = JSON.parse(output).error ?? output; } catch {}
-  throw new Error(message || tr("Herdr devolvió el código ") + result.code + ".");
+  throw commandError(result.stdout.trim() || result.stderr.trim(), tr("Herdr devolvió el código ") + result.code + ".");
 }

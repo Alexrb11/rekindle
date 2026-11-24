@@ -76,6 +76,22 @@ try {
         $contents = [IO.File]::ReadAllText($file)
         Assert ($contents.Contains('# >>> herdr-codex-resume >>>')) 'The profile block is missing.'
     }
+    $profileAst = [System.Management.Automation.Language.Parser]::ParseFile($profile, [ref]$null, [ref]$null)
+    $launcher = $profileAst.Find({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'global:codex'
+    }, $true)
+    Assert ($null -ne $launcher) 'The Codex launcher function is missing.'
+    & {
+        function codex.exe { $args }
+        . ([scriptblock]::Create($launcher.Extent.Text.Replace('global:codex', 'codex')))
+        $plainLaunch = @(codex --version)
+        Assert (($plainLaunch -join ' ') -ceq '--no-daemon --version') 'The launcher did not add --no-daemon.'
+        $herdrLaunch = @(codex --no-daemon --version)
+        Assert (($herdrLaunch -join ' ') -ceq '--no-daemon --version') 'The launcher duplicated --no-daemon.'
+        $literalPrompt = @(codex '--' '--no-daemon')
+        Assert (($literalPrompt -join ' ') -ceq '--no-daemon -- --no-daemon') 'A literal prompt was mistaken for an option.'
+    }
     $settings = Read-Json $hooks
     Assert ($settings.description -eq 'existing hooks') 'The existing description changed.'
     Assert ($settings.hooks.Stop[0].hooks[0].command -eq 'echo last') 'An unrelated event changed.'

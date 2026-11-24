@@ -7,6 +7,7 @@ import { checkQuotaAlerts, QuotaAlertSettings, quotaThreshold } from "./quota-al
 import { REVIEWS_KEY, reviewRequest, reviewState } from "./reviews.js";
 
 const WEEKLY_BAR_WIDTH = 56;
+const QUOTA_REFRESH_MS = 30_000;
 
 export default class RekindleStatus extends View {
   init(_props, cx) {
@@ -20,7 +21,7 @@ export default class RekindleStatus extends View {
     this.refreshUsage(cx);
     this.refreshQuota(cx);
     cx.timer.every(12000, cx => this.refreshUsage(cx));
-    cx.timer.every(120000, cx => this.refreshQuota(cx));
+    cx.timer.every(QUOTA_REFRESH_MS, cx => this.refreshQuota(cx));
   }
 
   close() {

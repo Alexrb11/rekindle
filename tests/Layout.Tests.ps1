@@ -20,6 +20,8 @@ try {
     & $installer @options -Component Layout | Out-Null
     Assert-True (Test-Path -LiteralPath $layout) 'The layout is missing.'
     Assert-True (Test-Path -LiteralPath $sprite) 'The agent sprite is missing.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $app 'mods/rekindle-sidebar/workspace-search.js')) 'The workspace search is missing.'
+    Assert-True (!(Test-Path -LiteralPath (Join-Path $app 'data/rekindle-agent-types.json'))) 'A fresh layout must start without agent types.'
     Assert-True (!(Test-Path -LiteralPath $codex) -and !(Test-Path -LiteralPath $profilePath)) 'Layout-only installation changed Codex or PowerShell.'
     $first = (Get-FileHash -LiteralPath $sprite).Hash
     & $installer @options -Component All | Out-Null

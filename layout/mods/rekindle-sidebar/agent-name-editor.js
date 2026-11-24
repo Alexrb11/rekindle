@@ -1,13 +1,8 @@
 import { div } from "gpui-kit";
 import { Button, Input, InputState, h_flex, v_flex } from "gpui-base";
-import { closeOverlay, hc, terminals, theme } from "herdr";
-import { AGENT_NAME_LABEL } from "./project-team.js";
+import { closeOverlay, hc, theme } from "herdr";
+import { AGENT_NAME_LABEL, liveAgentTerminal } from "./project-team.js";
 import { tr } from "./i18n.js";
-
-export function liveAgentTerminal({ address, created_ms }) {
-  return terminals().find(terminal => terminal.address === address
-    && terminal.created_ms === created_ms && terminal.state === "live");
-}
 
 function button(id, label, t, action, { primary = false, disabled = false } = {}) {
   return Button.new(id).h(32).px(12).rounded(6).text_size(12).font_medium()

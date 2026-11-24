@@ -39,7 +39,9 @@ Usa `-Component Layout` para instalar el layout, la paleta, los sprites y los pa
 
 - Pulsa **Abrir carpeta** para añadir un proyecto. Pulsa su icono para elegir un color de sprite o un logo propio. Arrastra el tirador junto al proyecto para reordenarlo.
 - Tras una instalación nueva, abre **Nuevo agente** y pulsa **Nuevo tipo** para crear el primero. Elige su color de sprite y las skills de inicio que quieras. Pulsa el botón de edición junto a un tipo guardado para cambiarlo o eliminarlo. También puedes elegir skills del proyecto en `.agents/skills/<nombre>/SKILL.md`.
-- Cada agente muestra el título de su conversación. Pasa el cursor sobre el sprite para ver el tipo. Abre **⋯** para **Delegar**, **Cambiar nombre** o **Eliminar**. Si borras el nombre personalizado, vuelve a aparecer el título de la conversación. Al eliminar un agente, Herdr pide confirmación y cierra también sus subagentes.
+- Cada agente muestra el título de su conversación. Pasa el cursor sobre el sprite para ver el tipo. En **⋯** puedes delegar, cambiar el nombre, detener la tarea actual o eliminar al agente. Al detener la tarea, la conversación sigue abierta. Si borras el nombre personalizado, vuelve a aparecer el título de la conversación. Al eliminar un agente, Herdr pide confirmación y cierra también sus subagentes.
+- Pulsa la lupa para encontrar conversaciones por título o nombre personalizado y abrir proyectos por nombre o carpeta. La búsqueda incluye los equipos plegados.
+- Los agentes fijados quedan arriba en cada proyecto. Los demás se ordenan por uso reciente. Al principio se muestran cuatro y **Ver más** añade los siguientes cuatro.
 - Abre **Entregas** para revisar resultados de Codex, archivos modificados y pruebas. La barra de estado muestra el uso de Codex y permite configurar un aviso de cuota baja.
 - Pulsa **EN** o **ES** en la barra lateral para cambiar el idioma. Herdr recuerda el ajuste y lo aplica al panel de recuperación.
 

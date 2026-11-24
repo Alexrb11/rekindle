@@ -1,18 +1,10 @@
 import { tr } from "./i18n.js";
 import { div } from "gpui-kit";
 import { Button, h_flex, v_flex } from "gpui-base";
-import { hc, run, terminals } from "herdr";
+import { terminals } from "herdr";
 import { attentionPrompt, pendingReport, promptStamp } from "./attention-prompt.js";
-import { showError } from "./errors.js";
-
-async function coreJson(args) {
-  const result = await hc(args);
-  if (result.code === 0) return JSON.parse(result.stdout);
-  const output = result.stderr.trim() || result.stdout.trim();
-  let message = output;
-  try { message = JSON.parse(output).error?.message ?? output; } catch {}
-  throw new Error(message || tr("Herdr Core devolvió el código ") + result.code + ".");
-}
+import { coreJson, showError } from "./errors.js";
+import { openAgent } from "./project-team.js";
 
 async function readPrompt(address, report) {
   if (report.kind === "auth") return attentionPrompt(report);
@@ -142,7 +134,7 @@ export class AttentionRequests {
     const prompt = request?.prompt;
     const key = request?.key;
     const sent = Boolean(prompt && current.sent === key);
-    const open = () => run(agent.detached ? "terminal.peek" : "agent.focus", { terminal: address });
+    const open = () => openAgent(agent);
     const button = (option, i) => choiceButton("respuesta-" + address + "-" + i, tr(option.label), t, !current.sending && !sent,
       cx => option.keys.length ? this.answer(address, current, key, i, cx) : open())
       .when(Boolean(prompt.compact), el => el.flex_1().text_center());

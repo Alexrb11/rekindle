@@ -165,7 +165,14 @@ function Add-ProfileEdit([string]$Path) {
 # >>> herdr-codex-resume >>>
 if ($env:HC_TERMINAL_ID -and $env:HC_TERMINAL_SOCKET -and !$env:CODEX_SESSION_ID) {
     if (!(Get-Command codex -CommandType Alias, Function -ErrorAction SilentlyContinue)) {
-        function global:codex { codex.exe --no-daemon @args }
+        function global:codex {
+            $noDaemon = [Array]::IndexOf($args, '--no-daemon')
+            $endOfOptions = [Array]::IndexOf($args, '--')
+            if ($noDaemon -lt 0 -or ($endOfOptions -ge 0 -and $endOfOptions -lt $noDaemon)) {
+                $args = @('--no-daemon') + $args
+            }
+            codex.exe @args
+        }
     }
     if (Test-Path -LiteralPath __RUNTIME_PATH__ -PathType Leaf) {
         & __RUNTIME_PATH__ -Mode Resume
