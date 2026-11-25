@@ -11,6 +11,7 @@ export const DEFAULT_PROJECT_SPRITE = "mods/rekindle-sidebar/art/project.png";
 const LOGO_DIR = "data/rekindle/logos";
 const LOGO_STATE = "rekindle.project-logos";
 const COLOR_STATE = "rekindle.project-sprite-colors";
+const PENDING_APPEARANCE = "rekindle.pending-project-appearance";
 const LOGO_PATH = /^data\/rekindle\/logos\/[a-z0-9-]+\.(?:png|jpg|webp|svg)$/;
 const MAX_LOGO_BYTES = 8 * 1024 * 1024;
 const PALETTE = SPRITES.map(({ id, name, color }, index) => ({
@@ -26,6 +27,54 @@ export function projectLogo(spaceId) {
 export function projectSprite(spaceId) {
   const id = shared(COLOR_STATE)?.[spaceId];
   return PALETTE.find(color => color.id === id) ?? null;
+}
+
+function folderKey(path) {
+  const key = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  return /^(?:[a-z]:|\/\/)/i.test(key) ? key.toLowerCase() : key;
+}
+
+function appearanceTarget(saved, projects) {
+  const exact = projects.find(space => space.id === saved.id);
+  if (exact) return exact.id;
+  const folder = saved.folder && folderKey(saved.folder);
+  if (folder) {
+    const matches = projects.filter(space => space.machine === saved.machine && space.folder && folderKey(space.folder) === folder);
+    if (matches.length) return matches.length === 1 ? matches[0].id : null;
+  }
+  if (!saved.name || saved.name === "~") return null;
+  const name = saved.name.toLowerCase();
+  const matches = projects.filter(space => space.name.toLowerCase() === name);
+  return matches.length === 1 ? matches[0].id : null;
+}
+
+function pendingAppearance(entries, projects) {
+  const targets = entries.map(entry => ({ entry, id: appearanceTarget(entry, projects) }));
+  const counts = new Map();
+  for (const { id } of targets) counts.set(id, (counts.get(id) ?? 0) + 1);
+  const matched = targets.filter(({ id }) => id && counts.get(id) === 1);
+  const remaining = targets.filter(({ id }) => !id || counts.get(id) !== 1).map(({ entry }) => entry);
+  return { matched, remaining };
+}
+
+export function restoreProjectAppearance(projects, cx) {
+  const entries = shared(PENDING_APPEARANCE) ?? [];
+  if (!entries.length || !pendingAppearance(entries, projects).matched.length) return;
+  cx.spawn(async () => {
+    const { matched, remaining } = pendingAppearance(shared(PENDING_APPEARANCE) ?? [], spaces());
+    if (!matched.length) return;
+    const logos = { ...shared(LOGO_STATE) };
+    const colors = { ...shared(COLOR_STATE) };
+    for (const { id, entry } of matched) {
+      if (entry.logo) logos[id] = entry.logo;
+      else delete logos[id];
+      if (entry.sprite) colors[id] = entry.sprite;
+      else delete colors[id];
+    }
+    setShared(LOGO_STATE, logos);
+    setShared(COLOR_STATE, colors);
+    setShared(PENDING_APPEARANCE, remaining);
+  });
 }
 
 function setProjectLogo(spaceId, path) {

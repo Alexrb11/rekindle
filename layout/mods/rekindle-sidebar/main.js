@@ -10,7 +10,7 @@ import { AgentNameEditor } from "./agent-name-editor.js";
 import { ErrorDialog } from "./error-dialog.js";
 import { coreJson, runChecked, showError } from "./errors.js";
 import { ProjectEditor } from "./project-editor.js";
-import { DEFAULT_PROJECT_SPRITE, ProjectLogoEditor, projectLogo, projectSprite } from "./project-logos.js";
+import { DEFAULT_PROJECT_SPRITE, ProjectLogoEditor, projectLogo, projectSprite, restoreProjectAppearance } from "./project-logos.js";
 import {
   agentCounts, agentUseHistory, liveAgentTerminal, nextPendingAgent, openAgent, orderProjectTeam,
   projectNames, projectTeam, rememberAgentUse
@@ -18,8 +18,7 @@ import {
 import { spriteForType, spriteTile } from "./skill-sprites.js";
 import { WorkspaceSearch } from "./workspace-search.js";
 
-const SPRITE_SIZE = 28;
-const AGENTS_PER_PAGE = 4;
+const PREFERENCES = "rekindle.preferences";
 const FOLDS = "rekindle.sidebar-folds";
 const CODEX_USAGE = "rekindle.codex-usage";
 const REVIEWS = "rekindle.reviews";
@@ -156,10 +155,10 @@ function agentOptions(agent, t, actions) {
         .w_full().justify_start().text_color(t.ansi1).child(icon("x", 13)).child(tr("Eliminar"))));
 }
 
-function agentRow({ agent, depth, folded, descendants, usage, type, sprite }, t, spriteFrames, actions) {
-  const status = STATES[agent.status] ?? STATES.idle;
+function agentRow({ agent, status: statusKey, depth, folded, descendants, usage, type, sprite }, t, spriteFrames, actions, appearance) {
+  const status = STATES[statusKey] ?? STATES.idle;
   const frame = spriteFrames.get(status) ?? 0;
-  const statusColor = agent.status === "blocked" || agent.status === "done" ? t[agent.status] : t.muted;
+  const statusColor = statusKey === "blocked" || statusKey === "done" ? t[statusKey] : t.muted;
   const name = agent.conversationTitle;
   const spriteLabel = type ?? tr("Sin tipo asignado");
   const parent = agent.parentName && tr("De ") + agent.parentName;
@@ -167,7 +166,7 @@ function agentRow({ agent, depth, folded, descendants, usage, type, sprite }, t,
   const program = agent.program?.name;
   const subtree = descendants.total ? workSummary(descendants)
     || descendants.total + (descendants.total === 1 ? tr(" subagente") : tr(" subagentes")) : "";
-  const subtitle = folded && subtree ? statusText + " · " + subtree : statusText;
+  const subtitle = [appearance.showStatus ? statusText : null, folded ? subtree : null].filter(Boolean).join(" · ");
   const showUsage = Boolean(usage && usage.label !== "Tokens —");
   const summary = h_flex().id("abrir-agente-" + agent.address).flex_1().min_w(0).h_full().items_center().gap(6)
     .cursor_pointer()
@@ -175,16 +174,18 @@ function agentRow({ agent, depth, folded, descendants, usage, type, sprite }, t,
     .on_click(() => openAgent(agent))
     .when(descendants.total > 0, el => el.child(foldButton("plegar-equipo-" + agent.address, tr("equipo de ") + name, folded, t,
       cx => actions.toggle("teams", agent.foldKey, cx))))
-    .child(spriteTile(sprite, SPRITE_SIZE, frame, status.spriteRow)
-      .id("sprite-agente-" + agent.address).tooltip(spriteLabel).accessibility_label(spriteLabel))
+    .when(appearance.showSprites, el => el.child(spriteTile(sprite, appearance.compact ? 24 : 28, frame, status.spriteRow)
+      .id("sprite-agente-" + agent.address).tooltip(spriteLabel).accessibility_label(spriteLabel)))
     .child(v_flex().id("detalle-agente-" + agent.address).flex_1().min_w(0)
       .tooltip([name, [program, agent.address].filter(Boolean).join(" · "), parent, statusText,
         subtree, agent.detail, usage?.detail].filter(Boolean).join("\n"))
       .child(div().text_size(12.5).font_medium().truncate().child(name))
-      .child(div().id("estado-" + agent.address).text_size(10.5).text_color(statusColor).truncate().child(subtitle))
+      .when(Boolean(subtitle), el => el.child(div().id("estado-" + agent.address).text_size(10.5)
+        .text_color(statusColor).truncate().child(subtitle)))
       .when(showUsage, el => el.child(div().id("tokens-chat-" + agent.address).text_size(10.5).text_color(t.dim)
         .truncate().tooltip(usage.detail).child(usage.label))));
-  return h_flex().id("agente-" + agent.address).min_w(0).h(showUsage ? 48 : 36).flex_none().items_center().gap(6).px(5)
+  const height = appearance.compact ? (showUsage ? 44 : 31) : (showUsage ? 48 : 36);
+  return h_flex().id("agente-" + agent.address).min_w(0).h(height).flex_none().items_center().gap(6).px(5)
     .pl(22 + Math.min(depth, 3) * 9)
     .border_l(2).border_color(agent.focused ? t.accent : t.chrome)
     .when(agent.focused, el => el.bg(t.surface)).hover(el => el.bg(t.hover))
@@ -197,10 +198,10 @@ function agentRow({ agent, depth, folded, descendants, usage, type, sprite }, t,
       .child(agentOptions(agent, t, actions)));
 }
 
-function projectLogoTile(space, name, t) {
-  const source = projectLogo(space?.id) ?? projectSprite(space?.id)?.path;
-  const artwork = !source && space?.name === "~" ? icon("folder", 15).text_color(t.dim)
-    : image(source ?? DEFAULT_PROJECT_SPRITE).size(22);
+function projectLogoTile(space, name, t, showSprites) {
+  const sprite = showSprites ? projectSprite(space?.id)?.path ?? (space?.name === "~" ? null : DEFAULT_PROJECT_SPRITE) : null;
+  const source = projectLogo(space?.id) ?? sprite;
+  const artwork = source ? image(source).size(22) : icon("folder", 15).text_color(t.dim);
   if (!space) return div().size(24).flex_none().flex().items_center().justify_center().child(artwork);
   return rowButton("logo-" + space.id, tr("Logo y color de ") + name, t, () => {
     try {
@@ -225,7 +226,7 @@ function projectGrip(space, name, t, dragging, startDrag) {
     .children(Array.from({ length: 3 }, () => h_flex().gap(2).child(dot()).child(dot())));
 }
 
-function projectSection({ space, name, counts, rows, hasMore, folded, usage, reorder }, t, spriteFrames, actions) {
+function projectSection({ space, name, counts, rows, hasMore, folded, usage, reorder }, t, spriteFrames, actions, appearance) {
   const id = space?.id ?? "sin-proyecto";
   const context = [space?.machine, space?.branch].filter(Boolean).join(" · ");
   const activity = folded && counts.total ? workSummary(counts) || counts.total + (counts.total === 1 ? tr(" agente") : tr(" agentes")) : "";
@@ -248,14 +249,14 @@ function projectSection({ space, name, counts, rows, hasMore, folded, usage, reo
         .text_size(10.5).text_color(t.muted).truncate().tooltip(projectUsage.detail).child(projectUsage.label)))));
 
   return v_flex().id("equipo-proyecto-" + id).relative()
-    .flex_none().min_w(0).py(4).gap(2).border_t(1).border_color(t.border)
+    .flex_none().min_w(0).py(appearance.compact ? 2 : 4).gap(2).border_t(1).border_color(t.border)
     .when(reorder.dragging, el => el.opacity(0.55))
     .on_mouse_move((_event, cx) => actions.hoverProject(space, cx))
     .on_mouse_up("left", (_event, cx) => actions.dropProject(space, cx))
-    .child(h_flex().min_h(30).items_center().gap(5)
+    .child(h_flex().min_h(appearance.compact ? 27 : 30).items_center().gap(5)
       .child(counts.total ? foldButton("plegar-proyecto-" + id, name, folded, t,
         cx => actions.toggle("projects", space?.id ?? null, cx)) : div().w(20).flex_none())
-      .child(projectLogoTile(space, name, t)).child(title)
+      .child(projectLogoTile(space, name, t, appearance.showSprites)).child(title)
       .when(reorder.movable, el => el.child(projectGrip(space, name, t, reorder.dragging, actions.startDrag)))
       .when(Boolean(space), el => el
         .child(rowButton("nuevo-en-" + space.id, tr("Nuevo agente en ") + name, t, () => launcher(space)).w(24).px(0).child(icon("plus")))
@@ -263,7 +264,7 @@ function projectSection({ space, name, counts, rows, hasMore, folded, usage, reo
           openOverlay({ mod: "rekindle-sidebar", kind: "popup", width: 205, height: 73, at: "pointer", props: { projectMenu: space.id } }))
           .w(24).px(0).child(icon("settings", 13)))))
     .when(rows.length > 0, el => el.child(v_flex().min_w(0).gap(2).children(rows.map(row => {
-      const summary = agentRow(row, t, spriteFrames, actions);
+      const summary = agentRow(row, t, spriteFrames, actions, appearance);
       if (!row.request) return summary;
       return v_flex().flex_none().min_w(0).gap(4).child(summary)
         .child(row.request.ml(22 + Math.min(row.depth, 3) * 9).mr(3));
@@ -494,15 +495,30 @@ export default class Rekindle extends View {
     if (this.agentNameEditor) return this.agentNameEditor.render();
     if (this.workspaceSearch) return this.workspaceSearch.render();
     const t = theme();
+    const preferences = shared(PREFERENCES) ?? {};
+    const pageSize = preferences.agentsPerPage === "all" ? Infinity :
+      [8, 12].includes(preferences.agentsPerPage) ? preferences.agentsPerPage : 4;
+    if (this.pageSize !== pageSize) {
+      this.pageSize = pageSize;
+      this.projectLimits.clear();
+    }
+    const appearance = {
+      compact: preferences.density === "compact",
+      showSprites: preferences.showSprites !== false,
+      showStatus: preferences.showAgentStatus !== false
+    };
+    const animateSprites = appearance.showSprites && preferences.animateSprites !== false;
+    const showDeliveries = window()?.platform === "windows" && preferences.showDeliveries !== false;
     const projects = spaces();
     const names = projectNames(projects);
+    if (!checking()) restoreProjectAppearance(projects, cx);
     const here = focused();
     const address = here?.terminal ?? here?.agent;
     const liveTerminals = terminals();
     const team = projectTeam(agents(), liveTerminals, address);
     this.trackAgentUse(team.find(agent => agent.address === address), cx);
     const useHistory = agentUseHistory();
-    const { total, working, blocked } = agentCounts(team);
+    const { total, working, blocked, done } = agentCounts(team);
     const folds = shared(FOLDS) ?? {};
     const usage = shared(CODEX_USAGE);
     const foldedProjects = new Set(folds.projects ?? []);
@@ -510,8 +526,8 @@ export default class Rekindle extends View {
     const actions = {
       toggle: (key, id, cx) => this.toggleFold(key, id, cx),
       showMore: (id, cx) => {
-        const limit = this.projectLimits.get(id) ?? AGENTS_PER_PAGE;
-        this.projectLimits.set(id, limit + AGENTS_PER_PAGE);
+        const limit = this.projectLimits.get(id) ?? pageSize;
+        this.projectLimits.set(id, limit + pageSize);
         cx.notify();
       },
       startDrag: (space, cx) => {
@@ -551,20 +567,23 @@ export default class Rekindle extends View {
       if (this.filter !== "all" && counts[this.filter] === 0) continue;
       const space = project.space;
       const id = space?.id ?? null;
-      const limit = this.projectLimits.get(id) ?? AGENTS_PER_PAGE;
+      const limit = this.projectLimits.get(id) ?? pageSize;
       const folded = foldedProjects.has(id);
-      const orderedRows = folded ? [] : orderProjectTeam(project.agents, this.filter, foldedTeams, useHistory);
+      const orderedRows = folded ? [] : orderProjectTeam(project.agents, this.filter, foldedTeams, useHistory, preferences.agentOrder);
       for (const row of orderedRows) navigable.add(row.agent.address);
       const rows = orderedRows.slice(0, limit).map(row => {
         const { agent } = row;
         const { terminal } = agent;
         const typeName = agent.type ?? agent.tab_name;
         const typeSprite = this.spritesByType.get(typeName?.trim().toLowerCase());
-        const chat = usage?.chats?.[agent.address];
-        const isCodex = agent.app === "codex" || agent.program?.key === "codex";
-        const chatUsage = chat && chat.process === (terminal?.pid ?? null) ? chat : isCodex && !agent.address.includes("/")
-          ? { label: "Tokens —", detail: tr("Todavía no hay un contador vinculado a este chat de Codex.") } : null;
-        spriteStates.add(STATES[agent.status] ?? STATES.idle);
+        let chatUsage = null;
+        if (preferences.showTokens !== false) {
+          const chat = usage?.chats?.[agent.address];
+          const isCodex = agent.app === "codex" || agent.program?.key === "codex";
+          chatUsage = chat && chat.process === (terminal?.pid ?? null) ? chat : isCodex && !agent.address.includes("/")
+            ? { label: "Tokens —", detail: tr("Todavía no hay un contador vinculado a este chat de Codex.") } : null;
+        }
+        if (animateSprites) spriteStates.add(STATES[row.status] ?? STATES.idle);
         return {
           ...row, usage: chatUsage,
           type: agent.type ?? (typeSprite ? typeName : null),
@@ -590,25 +609,30 @@ export default class Rekindle extends View {
     const filters = [
       ["all", tr("Todos"), total],
       ["working", tr("En curso"), working],
-      ["blocked", tr("Atención"), blocked]
+      ["blocked", tr("Atención"), blocked],
+      ["done", tr("Terminados"), done]
     ];
-    const filterBar = h_flex().min_w(0).items_center().gap(4)
+    const filterBar = h_flex().min_w(0).flex_wrap().items_center().gap(3)
       .children(filters.map(([key, title, count]) => {
         const active = this.filter === key;
         return button("filtro-" + key, t, (_event, cx) => { this.filter = key; cx.notify(); })
-          .selected(active).accessibility_label(title + ", " + count).rounded(0)
+          .selected(active).accessibility_label(title + ", " + count).rounded(0).px(2).gap(2)
           .border_b(1).border_color(active ? t.accent : t.chrome)
           .text_color(active ? t.foreground : t.muted).text_size(11.5).child(title)
-          .when(count > 0, el => el.child(div().flex_none().text_color(key === "blocked" ? t.blocked : t.muted)
+          .when(count > 0, el => el.child(div().flex_none().text_color(key === "blocked" || key === "done" ? t[key] : t.muted)
             .child(String(count))));
       }))
-      .child(div().flex_1())
       .when(blocked > 0, el => el.child(button("siguiente-pendiente", t, (_event, cx) => this.nextPending(cx))
-        .w(27).px(0).text_color(t.blocked)
+        .ml_auto().w(20).px(0).text_color(t.blocked)
         .tooltip(tr("Siguiente pendiente")).accessibility_label(tr("Siguiente pendiente"))
         .child(icon("chevron-right", 15))));
-    const empty = { all: tr("Abre una carpeta para empezar un proyecto."), working: tr("No hay agentes trabajando ahora."), blocked: tr("Ningún agente necesita tu atención.") };
-    const reviews = (shared(REVIEWS)?.items ?? []).filter(item => !item.reviewed).length;
+    const empty = {
+      all: tr("Abre una carpeta para empezar un proyecto."),
+      working: tr("No hay agentes trabajando ahora."),
+      blocked: tr("Ningún agente necesita tu atención."),
+      done: tr("Ningún agente ha terminado una tarea.")
+    };
+    const reviews = showDeliveries ? (shared(REVIEWS)?.items ?? []).filter(item => !item.reviewed).length : 0;
     const locale = language();
     const nextLocale = locale === "en" ? "es" : "en";
     const languageLabel = locale === "en" ? "Cambiar a español" : "Switch to English";
@@ -630,7 +654,7 @@ export default class Rekindle extends View {
       .child(h_flex().flex_none().px(12).py(5).gap(5).items_center().border_t(1).border_color(t.border)
         .child(div().text_size(12).font_semibold().text_color(t.muted).child(tr("Proyectos")))
         .child(div().flex_1())
-        .when(window()?.platform === "windows", el => el.child(button("abrir-entregas", t, () =>
+        .when(showDeliveries, el => el.child(button("abrir-entregas", t, () =>
           run("mod.open", { name: "rekindle-deliveries" }))
           .px(6).tooltip(tr("Entregas pendientes de revisión")).accessibility_label(tr("Entregas, ") + reviews + tr(" pendientes"))
           .child(icon("archive", 13)).child(reviews ? tr("Entregas (") + reviews + ")" : tr("Entregas"))))
@@ -648,8 +672,12 @@ export default class Rekindle extends View {
             dragging: space && space.id === drag?.source.id,
             edge: space?.id === drag?.target ? dropEdge : null
           };
-          return projectSection({ ...project, reorder }, t, this.spriteFrames, actions);
+          return projectSection({ ...project, reorder }, t, this.spriteFrames, actions, appearance);
         }))
-        .when(!shown.length, el => el.child(div().px(6).py(11).text_size(12).text_color(t.muted).child(empty[this.filter]))));
+        .when(!shown.length, el => el.child(div().px(6).py(11).text_size(12).text_color(t.muted).child(empty[this.filter]))))
+      .when(window()?.platform === "windows", el => el.child(h_flex().flex_none().px(12).py(3).border_t(1).border_color(t.border)
+        .child(button("abrir-ajustes-rekindle", t, () => openOverlay({
+          mod: "rekindle-agents", kind: "dialog", modal: true, width: 540, height: 650, props: { settingsBackup: true }
+        })).child(icon("settings", 13)).child(tr("Ajustes de Rekindle")))));
   }
 }

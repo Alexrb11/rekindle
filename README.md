@@ -44,11 +44,16 @@ Use `-Component Layout` to install the layout, palette, sprites, and workspace p
 
 - Choose **Open folder** to add a project. Click its icon to change its sprite color or set a custom logo. Drag the handle next to a project to reorder it.
 - On a fresh install, open **New agent** and choose **New type** to create your first agent type. Pick its sprite color and optional startup skills. Use the edit button next to a saved type to change it or remove it. Choose additional project skills from `.agents/skills/<name>/SKILL.md`.
+  Codex opens an empty conversation with the selected skill references in its session instructions.
+- Select **Done** next to **Attention** to revisit agents and subagents that have finished a task.
 - Each agent row shows its conversation title. Hover over the sprite to see the agent type. Open **⋯** to delegate, rename, stop the current task, or delete the agent. Stopping a task keeps the conversation open. Clearing a custom name restores the conversation title. Deleting an agent asks for confirmation and closes its subagents too.
 - Use the search icon to find conversations by title or custom name and open projects by name or folder. Search includes folded project teams.
-- Pinned agents stay at the top of each project. The other agents appear in order of most recent use. Each project starts with four agents visible. **Show more** reveals four more at a time.
+- Pinned agents stay at the top of each project. By default, the other agents appear in order of most recent use, four at a time. **Rekindle settings** lets you change the order and the size of each group.
 - Open **Deliveries** to review Codex results, changed files, and checks. The status bar shows Codex usage and can alert when a quota drops below your chosen threshold.
 - Select **EN** or **ES** in the sidebar to change language. Herdr remembers the choice and shares it with the chat recovery panel.
+- Open **Rekindle settings** at the bottom of the sidebar to choose its density, visible elements, launch warning, and Codex quota refresh frequency. Preferences apply immediately and can be reset to their defaults.
+- In **Preferences → Projects and agents**, choose **Codex launch permissions** for new agents and subagents. Pick **Codex settings**, **Read only**, **Workspace**, or **Full access**. Full access runs commands without approval prompts.
+- The **Backups** tab exports and imports a ZIP with your preferences, agent types, sprite colors, and project logos. Import combines agent types by name. Project artwork is restored as you open matching projects.
 
 The layout uses Herdr's native terminal, Files, and Changes panels. Its Windows status and delivery panels read local Codex session records, run Git for diffs, and ask the installed Codex app server for quota. [Layout recipe](layout/RECIPE.md)
 

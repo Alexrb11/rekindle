@@ -1,9 +1,15 @@
 import { tr } from "./i18n.js";
+import { CODEX_PERMISSION_MODES } from "./preferences.js";
 import { spriteForType } from "./skill-sprites.js";
 
 const SKILL_PATH = /(?:^|[\\/])SKILL\.md$/i;
 const SKILL_NAME = /^[\p{L}\p{N}][\p{L}\p{N}_.:-]*$/u;
 const CONTROL = /[\x00-\x1f\x7f]/;
+const CODEX_PERMISSION_OPTIONS = new Set(["-s", "--sandbox", "-a", "--ask-for-approval"]);
+const CODEX_PERMISSION_SWITCHES = new Set([
+  "--approve-for-me", "--full-auto", "--dangerously-bypass-approvals-and-sandbox", "--yolo"
+]);
+const INLINE_PERMISSION_OPTION = /^(?:--(?:sandbox|ask-for-approval)=|-[sa].)/;
 
 export function skillLines(text) {
   return text.split(/\r\n|\r|\n/).map(line => line.trim()).filter(Boolean);
@@ -58,10 +64,26 @@ export function skillLabel(skill) {
   return skill.split(/[\\/]/).at(-2) ?? "SKILL.md";
 }
 
-export function agentCommand(engine) {
+function agentCommand(engine, codexPermissions) {
+  if (engine.key !== "codex") return engine.run;
   const [program, ...args] = engine.run;
-  if (engine.key === "codex" && !args.includes("--no-daemon")) return [program, "--no-daemon", ...args];
-  return engine.run;
+  const separator = args.indexOf("--");
+  const end = separator < 0 ? args.length : separator;
+  const options = args.slice(0, end);
+  const argv = options.includes("--no-daemon") ? [program] : [program, "--no-daemon"];
+  const mode = CODEX_PERMISSION_MODES.find(mode => mode.value === codexPermissions);
+  if (!mode?.approval) return [...argv, ...args];
+
+  // Replace launch options that would conflict with the selected permissions.
+  for (let i = 0; i < options.length; i++) {
+    const option = options[i];
+    if (CODEX_PERMISSION_OPTIONS.has(option)) {
+      i++;
+      continue;
+    }
+    if (!CODEX_PERMISSION_SWITCHES.has(option) && !INLINE_PERMISSION_OPTION.test(option)) argv.push(option);
+  }
+  return [...argv, "--sandbox", mode.value, "--ask-for-approval", mode.approval, ...args.slice(end)];
 }
 
 function skillInstructions(skills) {
@@ -74,12 +96,11 @@ function skillInstructions(skills) {
     + " If you cannot load a skill, say which one.";
 }
 
-export function startupTask(skills, { types, command, profilesPath } = {}) {
+function startupInstructions(skills, { types, command, profilesPath }) {
   const loadSkills = skillInstructions(skills);
   if (!loadSkills) return null;
   if (!types?.length || !command?.length) return loadSkills + " Wait for your first task.";
 
-  // Herdr passes the task as one argument. Windows PowerShell 5.1 splits it at embedded double quotes.
   const catalog = profilesPath
     ? "When delegating, read the Rekindle agent type catalog at «" + profilesPath + "». Each entry has a name field and a skills list in load order. Older entries use a single skill field."
     : "Rekindle agent type catalog with skills in load order.\n" + types.map(type => {
@@ -99,6 +120,18 @@ export function startupTask(skills, { types, command, profilesPath } = {}) {
   ].join("\n\n");
 }
 
+export function agentTabArgs(engine, skills, { types, profilesPath, codexPermissions }) {
+  const argv = agentCommand(engine, codexPermissions);
+  const instructions = startupInstructions(skills, { types, command: argv, profilesPath });
+  if (!instructions) return { argv };
+  if (engine.key !== "codex") return { argv, task: instructions };
+
+  // Codex accepts plain text as a config value. PowerShell 5.1 strips TOML string quotes.
+  const separator = argv.indexOf("--");
+  const index = separator < 0 ? argv.length : separator;
+  return { argv: [...argv.slice(0, index), "-c", "developer_instructions=" + instructions, ...argv.slice(index)] };
+}
+
 export function terminalLocation(address) {
   const slash = address.indexOf("/");
   return slash < 0
@@ -106,7 +139,7 @@ export function terminalLocation(address) {
     : { machine: address.slice(0, slash), id: address.slice(slash + 1) };
 }
 
-export function delegationArgs(parent, folder, engine, type, skills, task) {
+export function delegationArgs(parent, folder, engine, type, skills, task, codexPermissions) {
   const { machine, id } = terminalLocation(parent);
   const args = ["run", "--bg", "--json", "--parent", id];
   if (machine) args.push("--on", machine);
@@ -116,5 +149,5 @@ export function delegationArgs(parent, folder, engine, type, skills, task) {
     "Your assigned task:\n" + task,
     "When done or blocked, report back to the parent terminal using hc send " + id + " followed by a concise update."
   ].filter(Boolean).join("\n\n");
-  return [...args, "--label", "rekindle.type=" + type, "--", ...agentCommand(engine), prompt];
+  return [...args, "--label", "rekindle.type=" + type, "--", ...agentCommand(engine, codexPermissions), prompt];
 }

@@ -85,6 +85,11 @@ export default class Tabs extends View {
       if (this.pending.want !== now && Date.now() < this.pending.until) return;
       this.pending = null;
     }
+    if (now && !enabled.includes(now)) {
+      this.pending = { want: null, until: Date.now() + 1000 };
+      run("layout.hide", { id: "panel" });
+      return;
+    }
     if (this.panels[space.id] === now) return;
     this.panels[space.id] = now;
     localStorage.setItem("panels", JSON.stringify(this.panels));

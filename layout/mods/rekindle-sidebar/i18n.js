@@ -3,6 +3,7 @@ import { shared } from "herdr";
 export const LANGUAGE_KEY = "rekindle.language";
 
 const english = {
+  "Ajustes de Rekindle": "Rekindle settings",
   "Abre una carpeta para empezar un proyecto.": "Open a folder to start a project.",
   "Abriendo…": "Opening…",
   "Abrir carpeta": "Open folder",
@@ -84,6 +85,7 @@ const english = {
   "Logo guardado": "Logo saved",
   "Logo y color de ": "Logo and color for ",
   "Menta": "Mint",
+  "Ningún agente ha terminado una tarea.": "No agents have finished a task.",
   "Ningún agente necesita tu atención": "No agents need your attention",
   "Ningún agente necesita tu atención.": "No agents need your attention.",
   "No hay agentes trabajando ahora.": "No agents are working.",
@@ -137,6 +139,7 @@ const english = {
   "Te necesita": "Needs you",
   "Tarea detenida": "Task stopped",
   "Terminado": "Done",
+  "Terminados": "Done",
   "Todavía no hay un contador vinculado a este chat de Codex.": "This Codex chat has no linked token count yet.",
   "Todos": "All",
   "Título, nombre o proyecto": "Title, name or project",

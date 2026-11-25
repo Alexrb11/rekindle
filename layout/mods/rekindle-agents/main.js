@@ -1,11 +1,13 @@
 import { tr } from "./i18n.js";
 import { View, div, svg, image } from "gpui-kit";
 import { Button, h_flex, v_flex, Input, InputState, Textarea, TextareaState } from "gpui-base";
-import { appHome, checking, closeOverlay, focused, hc, home, knownAgents, openOverlay, panes, props, readTextFile, spaces, terminals, theme, window, writeTextFile } from "herdr";
-import { agentCommand, appendSkillFiles, delegationArgs, normalizeProfile, parseProfiles, skillLabel, skillLines, startupTask, terminalLocation } from "./agent-types.js";
+import { agents, appHome, checking, closeOverlay, focused, hc, home, knownAgents, openOverlay, panes, props, readTextFile, spaces, terminals, theme, window, writeTextFile } from "herdr";
+import { agentTabArgs, appendSkillFiles, delegationArgs, normalizeProfile, parseProfiles, skillLabel, skillLines, terminalLocation } from "./agent-types.js";
 import { runChecked, showError } from "./errors.js";
 import { pickExplorerFiles } from "./file-picker.js";
+import { currentPreferences } from "./preferences.js";
 import { hasProjectFolder, launchSkills, listProjectSkills, PROJECT_SKILLS_DIR } from "./project-skills.js";
+import { SettingsDialog } from "./settings-backup.js";
 import { TYPE_SPRITES, spriteForType, spriteTile } from "./skill-sprites.js";
 
 function button(id, label, t, action, { primary = false, enabled = true } = {}) {
@@ -16,11 +18,34 @@ function button(id, label, t, action, { primary = false, enabled = true } = {}) 
     .child(label);
 }
 
+function runningAgentsInProject(project) {
+  const listed = agents();
+  const owners = new Map(listed.map(agent => [agent.address, agent.space]));
+  const running = new Set(listed.filter(agent => agent.space === project && agent.status === "working").map(agent => agent.address));
+  const live = new Map(terminals().filter(terminal => terminal.state === "live").map(terminal => [terminal.address, terminal]));
+  for (const terminal of live.values()) {
+    if (terminal.status !== "working" || owners.has(terminal.address)) continue;
+    const seen = new Set([terminal.address]);
+    for (let parent = terminal.parent; parent && !seen.has(parent); parent = live.get(parent)?.parent) {
+      if (owners.has(parent)) {
+        if (owners.get(parent) === project) running.add(terminal.address);
+        break;
+      }
+      seen.add(parent);
+    }
+  }
+  return running.size;
+}
+
 export default class AgentPicker extends View {
   init(_props, cx) {
+    const options = props() ?? {};
+    if (options.settingsBackup) {
+      this.settingsDialog = new SettingsDialog(options.overlay, cx);
+      return;
+    }
     this.handle = cx.focus_handle();
     this.handle.focus();
-    const options = props() ?? {};
     this.parent = options.parent ?? null;
     this.parentName = options.parentName;
     this.parentType = options.parentType;
@@ -44,6 +69,7 @@ export default class AgentPicker extends View {
   }
 
   close() {
+    this.settingsDialog?.close();
     this.closed = true;
   }
 
@@ -305,7 +331,7 @@ export default class AgentPicker extends View {
       : tr("Se recargó la lista y tu borrador sigue abierto. Revísalo antes de volver a guardar."));
   }
 
-  launch(cx) {
+  launch(cx, confirmed = false) {
     const type = this.types[this.selected];
     if (this.creating || this.skillsOpen || !type || !this.engine || this.loadingTypes || this.loadingEngines || this.profileError || this.agentError) return;
     const project = this.project();
@@ -316,22 +342,31 @@ export default class AgentPicker extends View {
         return;
       }
     }
+    if (this.parent && !this.task.value().trim()) return;
+    const { runningAgentWarning: limit, codexPermissions } = currentPreferences();
+    if (!confirmed && limit && project) {
+      const running = runningAgentsInProject(project.id);
+      if (running >= limit) {
+        this.launchWarning = running;
+        cx.notify();
+        return;
+      }
+    }
+    this.launchWarning = null;
     const selected = this.projectSkills.filter(skill => this.selectedProjectSkills.has(skill.path));
     const skills = launchSkills(type.skills, selected, project?.folder);
     if (this.parent) {
-      this.createSubagent(type, skills, project, cx);
+      this.createSubagent(type, skills, project, codexPermissions, cx);
       return;
     }
-    const command = agentCommand(this.engine);
     const profilesPath = project?.machine ? null : this.path;
     this.createTab("agent", {
       name: type.name,
-      argv: command,
-      task: startupTask(skills, { types: this.types, command, profilesPath })
+      ...agentTabArgs(this.engine, skills, { types: this.types, profilesPath, codexPermissions })
     }, cx);
   }
 
-  createSubagent(type, skills, project, cx) {
+  createSubagent(type, skills, project, codexPermissions, cx) {
     const task = this.task.value().trim();
     if (!task) return;
     const parent = this.parentTerminal();
@@ -340,7 +375,7 @@ export default class AgentPicker extends View {
       return;
     }
     const folder = panes().find(pane => pane.terminal === parent.address)?.cwd || parent.cwd || project?.folder;
-    const args = delegationArgs(parent.address, folder, this.engine, type.name, skills, task);
+    const args = delegationArgs(parent.address, folder, this.engine, type.name, skills, task, codexPermissions);
     this.creating = "subagent";
     cx.notify();
     cx.spawn(async cx => {
@@ -403,6 +438,14 @@ export default class AgentPicker extends View {
   }
 
   onKey(event, cx) {
+    if (this.launchWarning) {
+      if (event.key === "escape") {
+        this.launchWarning = null;
+        cx.notify();
+      }
+      if (event.key === "escape" || event.key === "enter") cx.stop_propagation();
+      return;
+    }
     if (event.key === "escape" && this.edit?.confirmingRemoval) {
       cx.stop_propagation();
       this.setRemovalConfirmation(false, cx);
@@ -612,7 +655,22 @@ export default class AgentPicker extends View {
           (_event, cx) => this.launch(cx), { primary: true, enabled: ready }).px(12)));
   }
 
+  confirmLaunch(t) {
+    return v_flex().flex_1().min_h(0).gap(10)
+      .child(div().text_size(14).font_semibold().child(tr("Aviso antes de iniciar otro agente")))
+      .child(div().text_size(12).text_color(t.muted)
+        .child(tr("Agentes en curso en este proyecto") + " · " + this.launchWarning))
+      .child(div().flex_1())
+      .child(h_flex().justify_end().gap(7)
+        .child(button("cancelar-aviso-agentes", tr("Volver"), t, (_event, cx) => {
+          this.launchWarning = null;
+          cx.notify();
+        }))
+        .child(button("confirmar-lanzamiento", tr("Continuar"), t, (_event, cx) => this.launch(cx, true), { primary: true })));
+  }
+
   render() {
+    if (this.settingsDialog) return this.settingsDialog.render();
     const t = theme();
     const project = this.project();
     const title = this.edit ? (this.edit.index < 0 ? tr("Nuevo tipo") : tr("Editar tipo"))
@@ -629,6 +687,7 @@ export default class AgentPicker extends View {
             .child(div().text_size(12).truncate().child(context)))))
         .child(button("cerrar-selector", "×", t, () => this.dismiss()).w(28).px(0).text_size(19).accessibility_label(tr("Cerrar"))))
       .child(div().flex_none().h(1).bg(t.border))
-      .child(this.edit ? this.editForm(t) : this.skillsOpen ? this.skillsPicker(project, t) : this.picker(project, t));
+      .child(this.launchWarning ? this.confirmLaunch(t)
+        : this.edit ? this.editForm(t) : this.skillsOpen ? this.skillsPicker(project, t) : this.picker(project, t));
   }
 }

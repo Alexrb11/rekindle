@@ -1,13 +1,19 @@
 import { tr } from "./i18n.js";
 import { View, div, svg } from "gpui-kit";
 import { Button, h_flex } from "gpui-base";
-import { agents, appHome, checking, exec, keys, openOverlay, props, run, setShared, shared, spaces, terminals, theme, window } from "herdr";
+import { agents, appHome, checking, exec, keys, nextCommand, openOverlay, props, run, setShared, shared, spaces, terminals, theme, window } from "herdr";
 import { codexTerminalRequests, QUOTA_KEY, remainingQuota, usageSnapshot, USAGE_KEY } from "./usage.js";
 import { checkQuotaAlerts, QuotaAlertSettings, quotaThreshold } from "./quota-alerts.js";
 import { REVIEWS_KEY, reviewRequest, reviewState } from "./reviews.js";
 
 const WEEKLY_BAR_WIDTH = 56;
-const QUOTA_REFRESH_MS = 30_000;
+const PREFERENCES = "rekindle.preferences";
+const DEFAULT_QUOTA_REFRESH_MS = 30_000;
+
+function quotaRefreshInterval() {
+  const interval = shared(PREFERENCES)?.quotaRefreshMs;
+  return [0, 60_000, 120_000].includes(interval) ? interval : DEFAULT_QUOTA_REFRESH_MS;
+}
 
 export default class RekindleStatus extends View {
   init(_props, cx) {
@@ -18,14 +24,31 @@ export default class RekindleStatus extends View {
     }
     if (checking() || window()?.platform !== "windows") return;
     this.reviewSince = Date.now();
+    this.alertThreshold = quotaThreshold();
     this.refreshUsage(cx);
-    this.refreshQuota(cx);
+    this.pollQuota(cx);
     cx.timer.every(12000, cx => this.refreshUsage(cx));
-    cx.timer.every(QUOTA_REFRESH_MS, cx => this.refreshQuota(cx));
+    cx.timer.every(1000, cx => this.pollQuota(cx));
+    cx.spawn(async cx => {
+      for (;;) {
+        const command = await nextCommand();
+        if (command === "refresh-quota") this.refreshQuota(cx);
+      }
+    });
   }
 
   close() {
     this.alertSettings?.close();
+  }
+
+  pollQuota(cx) {
+    const threshold = quotaThreshold();
+    if (threshold !== this.alertThreshold) {
+      this.alertThreshold = threshold;
+      checkQuotaAlerts(shared(QUOTA_KEY));
+    }
+    const interval = quotaRefreshInterval();
+    if (interval && Date.now() - (this.lastQuotaRequest ?? -Infinity) >= interval) this.refreshQuota(cx);
   }
 
   async readUsage(operation, args = []) {
@@ -70,6 +93,7 @@ export default class RekindleStatus extends View {
   refreshQuota(cx) {
     if (this.readingQuota) return;
     this.readingQuota = true;
+    this.lastQuotaRequest = Date.now();
     cx.notify();
     cx.spawn(async cx => {
       try {
@@ -85,14 +109,16 @@ export default class RekindleStatus extends View {
     });
   }
 
-  quotaIndicator(t) {
+  quotaIndicator(t, showWeekly) {
     const account = shared(QUOTA_KEY);
-    const history = this.historyQuota;
+    const history = quotaRefreshInterval() === 0 ? null : this.historyQuota;
     const now = Date.now();
     const freshAccount = now - account?.captured < 180000 && remainingQuota(account, now).length;
     const snapshot = freshAccount ? account : [account, history].filter(value => remainingQuota(value, now).length)
       .sort((a, b) => b.captured - a.captured)[0];
-    const windows = remainingQuota(snapshot, now);
+    const weekly = tr("Semanal");
+    const windows = remainingQuota(snapshot, now).filter(bucket => showWeekly || bucket.name !== weekly);
+    if (!showWeekly && !windows.length) return null;
     const lines = windows.map(bucket => {
       const reset = Number.isFinite(bucket.resets) && bucket.resets > 0
         ? tr(" · se restablece ") + new Date(bucket.resets * 1000).toLocaleString() : "";
@@ -111,7 +137,7 @@ export default class RekindleStatus extends View {
         .when(index > 0, el => el.child(div().flex_none().child("·")))
         .child(div().min_w(0).truncate().child(bucket.name))
         .child(div().flex_none().font_semibold().text_color(t.foreground).child(bucket.percent + " %"))
-        .when(bucket.name === tr("Semanal"), el => el.child(div().id("rekindle-cuota-semanal-" + index)
+        .when(bucket.name === weekly, el => el.child(div().id("rekindle-cuota-semanal-" + index)
           .flex_none().w(WEEKLY_BAR_WIDTH).h(4).bg(t.input).overflow_hidden()
           .when(bucket.percent > 0, bar => bar.child(div().w(WEEKLY_BAR_WIDTH * bucket.percent / 100)
             .h_full().bg(t.muted)))))));
@@ -139,6 +165,8 @@ export default class RekindleStatus extends View {
     const space = spaces().find(s => s.active);
     const list = agents();
     const needs = list.filter(a => a.status === "blocked").length;
+    const showWeekly = shared(PREFERENCES)?.showWeeklyQuota !== false;
+    const quota = window()?.platform === "windows" ? this.quotaIndicator(t, showWeekly) : null;
     const threshold = quotaThreshold();
     const commandKey = this.hint();
     const label = (icon, text) => h_flex().min_w(0).gap(5).items_center()
@@ -151,8 +179,8 @@ export default class RekindleStatus extends View {
         .child(list.length + (list.length === 1 ? tr(" agente") : tr(" agentes")))
         .when(needs > 0, el => el.child(div().text_color(t.blocked).child(needs === 1 ? tr("· 1 pendiente") : "· " + needs + tr(" pendientes")))))
       .child(div().flex_1().min_w(0))
-      .when(window()?.platform === "windows", el => el.child(h_flex().min_w(0).gap(2).items_center()
-        .child(this.quotaIndicator(t))
+      .when(Boolean(quota), el => el.child(h_flex().min_w(0).gap(2).items_center()
+        .child(quota)
         .child(Button.new("configurar-aviso-cuota").size(22).flex_none().flex().items_center().justify_center()
           .rounded(3).cursor_pointer().hover(button => button.bg(t.hover).text_color(t.foreground))
           .tooltip(threshold ? tr("Configurar aviso de cuota baja · umbral ") + threshold + " %" : tr("Configurar aviso de cuota baja"))

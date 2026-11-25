@@ -3,7 +3,8 @@ import { exec } from "herdr";
 
 const FILE_DIALOG = [
   "Add-Type -AssemblyName System.Windows.Forms",
-  "$picker = [System.Windows.Forms.OpenFileDialog]::new()",
+  "$saving = $options.kind -eq 'settings-save'",
+  "$picker = if ($saving) { [System.Windows.Forms.SaveFileDialog]::new() } else { [System.Windows.Forms.OpenFileDialog]::new() }",
   "$owner = [System.Windows.Forms.Form]::new()",
   "$owner.ShowInTaskbar = $false",
   "$owner.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None",
@@ -12,24 +13,36 @@ const FILE_DIALOG = [
   "$owner.Size = [System.Drawing.Size]::new(1, 1)",
   "$owner.Opacity = 0",
   "$owner.TopMost = $true",
-  "$skills = $options.kind -eq 'skills'",
   "$picker.Title = $options.title",
   "$picker.Filter = $options.filter",
-  "$picker.Multiselect = $skills",
-  "$picker.CheckFileExists = $true",
-  "$picker.AddExtension = $false",
+  "if ($saving) { $picker.FileName = $options.file; $picker.DefaultExt = 'zip'; $picker.OverwritePrompt = $true } else { $picker.Multiselect = $options.kind -eq 'skills'; $picker.CheckFileExists = $true; $picker.AddExtension = $false }",
   "$picker.RestoreDirectory = $true",
   "foreach ($folder in @($options.folders)) { if ($folder -and (Test-Path -LiteralPath $folder -PathType Container)) { $picker.InitialDirectory = $folder; break } }",
   "try { $owner.Show(); $owner.Activate(); if ($picker.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); [Console]::Write((ConvertTo-Json -InputObject @($picker.FileNames) -Compress)) } } finally { $picker.Dispose(); $owner.Dispose() }"
 ].join("; ");
 
-export async function pickExplorerFiles(kind, folders = []) {
-  // The PowerShell program reads the options as data, including paths with apostrophes.
+export function pickExplorerFiles(kind, folders = []) {
   const skills = kind === "skills";
   const title = skills ? tr("Seleccionar archivos SKILL.md") : tr("Elegir logo del proyecto");
   const filter = skills ? tr("Archivos SKILL.md") + "|SKILL.md"
     : tr("Imágenes") + " (*.png;*.jpg;*.jpeg;*.webp;*.svg)|*.png;*.jpg;*.jpeg;*.webp;*.svg";
-  const encoded = encodeURIComponent(JSON.stringify({ kind, folders, title, filter })).replace(/'/g, "%27");
+  return pickFiles({ kind, folders, title, filter });
+}
+
+export async function pickSettingsArchive(save) {
+  const files = await pickFiles({
+    kind: save ? "settings-save" : "settings-open",
+    title: save ? tr("Guardar copia de ajustes") : tr("Elegir copia de ajustes"),
+    filter: tr("Copias de ajustes") + " (*.zip)|*.zip",
+    folders: [],
+    file: "rekindle-ajustes.zip"
+  });
+  return files[0] ?? null;
+}
+
+async function pickFiles(options) {
+  // The PowerShell program reads the options as data, including paths with apostrophes.
+  const encoded = encodeURIComponent(JSON.stringify(options)).replace(/'/g, "%27");
   const command = "$ErrorActionPreference = 'Stop'; $options = ConvertFrom-Json ([Uri]::UnescapeDataString('" + encoded + "')); " + FILE_DIALOG;
   const result = await exec("powershell.exe", [
     "-NoLogo", "-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-Command", command

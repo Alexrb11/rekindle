@@ -122,17 +122,21 @@ export function projectTeam(listed, liveTerminals, focusedAddress) {
   return team;
 }
 
-export function agentCounts(agents) {
-  let working = 0;
-  let blocked = 0;
-  for (const agent of agents) {
-    if (agent.status === "working") working++;
-    if (agent.status === "blocked") blocked++;
-  }
-  return { total: agents.length, working, blocked };
+function taskStatus(agent) {
+  // Herdr shows a seen completion as idle. The core keeps the agent's report.
+  return agent.status === "idle" && agent.terminal?.status === "done" ? "done" : agent.status;
 }
 
-function sortByRecentUse(agents, projectAgents, history) {
+export function agentCounts(agents) {
+  const counts = { total: agents.length, working: 0, blocked: 0, done: 0 };
+  for (const agent of agents) {
+    const status = taskStatus(agent);
+    if (status === "working" || status === "blocked" || status === "done") counts[status]++;
+  }
+  return counts;
+}
+
+function recentActivity(projectAgents, history) {
   const byAddress = new Map(projectAgents.map(agent => [agent.address, agent]));
   const activity = new Map();
   for (const agent of projectAgents) {
@@ -142,14 +146,20 @@ function sortByRecentUse(agents, projectAgents, history) {
       activity.set(member.address, usedAt);
     }
   }
-  agents.sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
-    || activity.get(b.address) - activity.get(a.address) || b.createdAt - a.createdAt || b.seq - a.seq);
+  return activity;
 }
 
-export function orderProjectTeam(agents, filter, foldedTeams, history) {
+export function orderProjectTeam(agents, filter, foldedTeams, history, order = "recent") {
   // Filter before building the hierarchy so matching children stay visible.
-  const visible = filter === "all" ? [...agents] : agents.filter(agent => agent.status === filter);
-  if (visible.length > 1) sortByRecentUse(visible, agents, history);
+  const visible = filter === "all" ? [...agents] : agents.filter(agent => taskStatus(agent) === filter);
+  if (visible.length > 1) {
+    const activity = order === "created" || order === "name" ? null : recentActivity(agents, history);
+    const compare = order === "name"
+      ? (a, b) => a.conversationTitle.toLowerCase().localeCompare(b.conversationTitle.toLowerCase())
+      : (a, b) => (activity?.get(b.address) ?? 0) - (activity?.get(a.address) ?? 0);
+    visible.sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
+      || compare(a, b) || b.createdAt - a.createdAt || b.seq - a.seq);
+  }
   const children = childrenByParent(visible);
   const present = new Set(visible.map(agent => agent.address));
   const seen = new Set();
@@ -159,7 +169,8 @@ export function orderProjectTeam(agents, filter, foldedTeams, history) {
     seen.add(agent.address);
     const folded = foldedTeams.has(agent.foldKey);
     const descendants = { total: 0, working: 0, blocked: 0 };
-    if (!hidden) ordered.push({ agent, depth, folded, descendants });
+    const status = filter === "done" ? "done" : agent.status;
+    if (!hidden) ordered.push({ agent, status, depth, folded, descendants });
     for (const child of children.get(agent.address) ?? []) {
       const group = visit(child, depth + 1, hidden || folded);
       if (!group) continue;
